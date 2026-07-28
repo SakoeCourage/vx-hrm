@@ -1,56 +1,146 @@
-# Welcome to your Expo app 👋
+# VX HRM
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+VX HRM is a staff mobile app built with Expo, React Native, Expo Router, React Query, React Native Paper, and Uniwind. It connects to the VX HRM gateway for staff authentication, profile data, onboarding checks, attendance, roster, and QR-based workflows.
 
-## Get started
+## Tech Stack
 
-1. Install dependencies
+- Expo SDK 54
+- React 19 and React Native 0.81
+- Expo Router 6 with typed routes enabled
+- TanStack React Query for server state
+- React Native Paper for UI primitives
+- Uniwind and Tailwind CSS for styling support
+- Expo SecureStore for persisted session credentials
+- EAS Build for internal preview and production builds
 
-   ```bash
-   npm install
-   ```
+> Note: repository agent instructions require checking the Expo SDK 57 documentation before code changes. The app dependencies currently target Expo SDK 54.
 
-2. Start the app
+## Requirements
 
-   ```bash
-   npx expo start
-   ```
+- Node.js 20.19.x or newer for the current Expo SDK target
+- npm
+- Xcode for iOS builds
+- Android Studio and Android SDK for Android builds
+- Expo CLI through `npx expo`
+- EAS CLI through `npx eas-cli` when creating cloud builds
 
-In the output, you'll find options to open the app in a
+## Getting Started
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+Install dependencies:
 
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Start the Expo development server:
 
-### Other setup steps
+```bash
+npm run start
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Run on iOS:
 
-## Learn more
+```bash
+npm run ios
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+Run on Android:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm run android
+```
 
-## Join the community
+Run the web target:
 
-Join our community of developers creating universal apps.
+```bash
+npm run web
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Lint the project:
+
+```bash
+npm run lint
+```
+
+## App Structure
+
+```text
+src/app/                 Expo Router routes
+src/app/(tabs)/          Authenticated tab screens
+src/components/ui/       Shared UI components
+src/constants/           Theme and Paper configuration
+src/features/auth/       Login, OTP, and onboarding routing flow
+src/features/home/       Home shell and formatting helpers
+src/lib/api/             Gateway API client
+src/lib/auth/            Session, token, staff auth, and prerequisite helpers
+src/lib/device/          Biometric and device helpers
+app-doc/                 API bootstrap documentation
+assets/                  App icons, splash, fonts, and images
+```
+
+Main routes:
+
+- `/` starts the staff authentication flow.
+- `/(tabs)/home` shows the authenticated home screen.
+- `/(tabs)/attendance` handles attendance views.
+- `/(tabs)/scan` provides the QR scan workflow.
+- `/(tabs)/roster` shows duty roster information.
+- `/(tabs)/profile` shows staff profile information.
+
+## API
+
+The mobile app uses the gateway at:
+
+```text
+https://hrm-gateway.fly.dev
+```
+
+Service paths are grouped under:
+
+```text
+/hrm
+/attendance
+```
+
+Authenticated HRM requests send:
+
+```http
+Authorization: Bearer {accessToken}
+x-tenant-id: {tenantId}
+Content-Type: application/json
+```
+
+See [app-doc/mobile-app-api.md](app-doc/mobile-app-api.md) for endpoint payloads, response shapes, and session storage notes.
+
+## Native Configuration
+
+App configuration is in [app.json](app.json).
+
+- iOS bundle identifier: `com.variablexsolutions.vxhrm`
+- Android package: `com.variablexsolutions.vxhrm`
+- Deep link scheme: `vxhrm`
+- Face ID usage text is configured for attendance identity checks.
+- Android biometric and fingerprint permissions are enabled.
+- Image picker permissions are configured for passport photo capture and selection.
+
+## Builds
+
+EAS configuration is in [eas.json](eas.json).
+
+Create an internal Android APK preview build:
+
+```bash
+npx eas-cli build --platform android --profile preview
+```
+
+Create a production build:
+
+```bash
+npx eas-cli build --platform all --profile production
+```
+
+## Notes
+
+- Staff tokens are stored with `expo-secure-store`.
+- The app uses a gateway API client in `src/lib/api/client.ts`.
+- Attendance biometric sessions are cleared after the app remains backgrounded beyond the configured delay.
