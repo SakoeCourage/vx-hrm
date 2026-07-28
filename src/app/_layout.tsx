@@ -1,7 +1,7 @@
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
@@ -13,15 +13,54 @@ import { clearAttendanceBiometricSession } from '@/lib/device/attendance-biometr
 import { queryClient } from '@/lib/query-client';
 import '@/global.css';
 
+const BIOMETRIC_BACKGROUND_CLEAR_DELAY_MS = 2500;
+
 export default function RootLayout() {
+  const biometricClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const biometricBackgroundedAtRef = useRef<number | null>(null);
+
   useEffect(() => {
+    const cancelScheduledBiometricClear = () => {
+      if (!biometricClearTimerRef.current) {
+        return;
+      }
+
+      clearTimeout(biometricClearTimerRef.current);
+      biometricClearTimerRef.current = null;
+    };
+
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'background') {
-        clearAttendanceBiometricSession();
+        cancelScheduledBiometricClear();
+        biometricBackgroundedAtRef.current = Date.now();
+        biometricClearTimerRef.current = setTimeout(() => {
+          clearAttendanceBiometricSession();
+          biometricBackgroundedAtRef.current = null;
+          biometricClearTimerRef.current = null;
+        }, BIOMETRIC_BACKGROUND_CLEAR_DELAY_MS);
+        return;
+      }
+
+      if (nextState === 'active') {
+        const backgroundedAt = biometricBackgroundedAtRef.current;
+        cancelScheduledBiometricClear();
+
+        if (
+          backgroundedAt &&
+          Date.now() - backgroundedAt >= BIOMETRIC_BACKGROUND_CLEAR_DELAY_MS
+        ) {
+          clearAttendanceBiometricSession();
+        }
+
+        biometricBackgroundedAtRef.current = null;
       }
     });
 
-    return () => subscription.remove();
+    return () => {
+      cancelScheduledBiometricClear();
+      biometricBackgroundedAtRef.current = null;
+      subscription.remove();
+    };
   }, []);
 
   return (
