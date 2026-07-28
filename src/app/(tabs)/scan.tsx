@@ -9,14 +9,14 @@ import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
 import { AppButton, Screen } from '@/components/ui';
 import { Colors, Spacing, Typography } from '@/constants/theme';
+import {
+  getLocalFaceStaffIdentity,
+  hasValidLocalFaceVerificationSession,
+  LocalFaceVerificationGate,
+} from '@/features/face-verification';
 import { getAttendanceStatus, logAttendance } from '@/lib/auth/api';
 import { useSession } from '@/lib/auth/session-context';
 import { useAuthenticatedRequest } from '@/lib/auth/use-authenticated-request';
-import {
-  cancelAttendanceBiometricVerification,
-  hasValidAttendanceBiometricSession,
-  verifyAttendanceBiometricSession,
-} from '@/lib/device/attendance-biometric-gate';
 import { useDeviceId } from '@/lib/hooks/use-device-id';
 
 const DEFAULT_QR_RADIUS_METERS = 100;
@@ -182,9 +182,13 @@ export default function ScanTab() {
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const [locationCheckVersion, setLocationCheckVersion] = useState(0);
   const [scanOverlay, setScanOverlay] = useState<'loading' | 'success' | null>(null);
-  const [isBiometricVerified, setIsBiometricVerified] = useState(() => hasValidAttendanceBiometricSession());
-  const [isVerifyingBiometric, setIsVerifyingBiometric] = useState(false);
-  const [biometricAttemptVersion, setBiometricAttemptVersion] = useState(0);
+  const staffIdentity = getLocalFaceStaffIdentity({
+    staffIdentificationNumber: session?.staffIdentificationNumber,
+    tenantId: session?.tenantId,
+  });
+  const [isFaceVerified, setIsFaceVerified] = useState(() =>
+    hasValidLocalFaceVerificationSession(staffIdentity)
+  );
 
   // Toast message states
   const [snackbarVisible, setSnackbarVisible] = useState(false);
@@ -255,8 +259,6 @@ export default function ScanTab() {
   const isFocused = useIsFocused();
   const focusResetCountRef = useRef(0);
   const deviceLocationRef = useRef<DeviceLocation | null>(null);
-  const biometricAttemptRef = useRef<number | null>(null);
-  const biometricVerificationInFlightRef = useRef(false);
   const scanLockRef = useRef(false);
   const lastScanRef = useRef<{ data: string; timestamp: number } | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -264,6 +266,10 @@ export default function ScanTab() {
   useEffect(() => {
     deviceLocationRef.current = deviceLocation;
   }, [deviceLocation]);
+
+  useEffect(() => {
+    setIsFaceVerified(hasValidLocalFaceVerificationSession(staffIdentity));
+  }, [staffIdentity]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -274,8 +280,8 @@ export default function ScanTab() {
         return;
       }
 
-      const hasActiveBiometricSession = hasValidAttendanceBiometricSession();
-      if (hasActiveBiometricSession) {
+      const hasActiveFaceSession = hasValidLocalFaceVerificationSession(staffIdentity);
+      if (hasActiveFaceSession) {
         return;
       }
 
@@ -290,14 +296,12 @@ export default function ScanTab() {
       setLocationPermission(null);
       setDeviceLocation(null);
       setIsResolvingLocation(false);
-      setIsBiometricVerified(false);
-      setIsVerifyingBiometric(false);
-      setBiometricAttemptVersion((current) => current + 1);
+      setIsFaceVerified(false);
       setLocationCheckVersion((current) => current + 1);
     });
 
     return () => subscription.remove();
-  }, [isFocused]);
+  }, [isFocused, staffIdentity]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -307,7 +311,7 @@ export default function ScanTab() {
     focusResetCountRef.current += 1;
 
     if (focusResetCountRef.current > 1) {
-      const hasActiveBiometricSession = hasValidAttendanceBiometricSession();
+      const hasActiveFaceSession = hasValidLocalFaceVerificationSession(staffIdentity);
 
       setIsScanning(true);
       setScanOverlay(null);
@@ -320,69 +324,21 @@ export default function ScanTab() {
       setLocationPermission(null);
       setDeviceLocation(null);
       setIsResolvingLocation(false);
-      setIsBiometricVerified(hasActiveBiometricSession);
-      setIsVerifyingBiometric(false);
-      if (!hasActiveBiometricSession) {
-        setBiometricAttemptVersion((current) => current + 1);
-      }
+      setIsFaceVerified(hasActiveFaceSession);
       setLocationCheckVersion((current) => current + 1);
     }
-  }, [isFocused]);
-
-  useEffect(() => {
-    if (
-      !isFocused ||
-      isBiometricVerified ||
-      biometricVerificationInFlightRef.current ||
-      biometricAttemptRef.current === biometricAttemptVersion
-    ) {
-      return;
-    }
-
-    let isMounted = true;
-    biometricAttemptRef.current = biometricAttemptVersion;
-    biometricVerificationInFlightRef.current = true;
-
-    (async () => {
-      setIsVerifyingBiometric(true);
-
-      try {
-        await verifyAttendanceBiometricSession();
-        if (isMounted) {
-          setIsBiometricVerified(true);
-          setSnackbarVisible(false);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setIsBiometricVerified(false);
-          setSnackbarTone('danger');
-          setSnackbarMessage(error instanceof Error ? error.message : 'Biometric verification is required before scanning.');
-          setSnackbarVisible(true);
-        }
-      } finally {
-        biometricVerificationInFlightRef.current = false;
-        if (isMounted) {
-          setIsVerifyingBiometric(false);
-        }
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-      void cancelAttendanceBiometricVerification();
-    };
-  }, [biometricAttemptVersion, isBiometricVerified, isFocused]);
+  }, [isFocused, staffIdentity]);
 
   // Auto-request permissions on mount if not determined or granted
   useEffect(() => {
-    if (isBiometricVerified && permission && !permission.granted && permission.canAskAgain) {
+    if (isFaceVerified && permission && !permission.granted && permission.canAskAgain) {
       requestPermission();
     }
-  }, [isBiometricVerified, permission, requestPermission]);
+  }, [isFaceVerified, permission, requestPermission]);
 
-  // Resolve location after identity is verified. Camera stays visible while this runs.
+  // Resolve location after local face verification. Camera stays visible while this runs.
   useEffect(() => {
-    if (!isFocused || !isBiometricVerified) {
+    if (!isFocused || !isFaceVerified) {
       return;
     }
 
@@ -457,13 +413,13 @@ export default function ScanTab() {
     return () => {
       isMounted = false;
     };
-  }, [isBiometricVerified, isFocused, locationCheckVersion]);
+  }, [isFaceVerified, isFocused, locationCheckVersion]);
 
   // Run the horizontal laser line animation back and forth
   useEffect(() => {
     let animLoop: Animated.CompositeAnimation | null = null;
 
-    if (isScanning && permission?.granted && isBiometricVerified) {
+    if (isScanning && permission?.granted && isFaceVerified) {
       scanAnim.setValue(10);
       animLoop = Animated.loop(
         Animated.sequence([
@@ -489,7 +445,7 @@ export default function ScanTab() {
         animLoop.stop();
       }
     };
-  }, [isBiometricVerified, isScanning, permission, scanAnim]);
+  }, [isFaceVerified, isScanning, permission, scanAnim]);
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (!isScanning || scanOverlay || logMutation.isPending || scanLockRef.current) return;
@@ -584,42 +540,16 @@ export default function ScanTab() {
     }
   };
 
-  if (!isBiometricVerified) {
+  if (!isFaceVerified) {
     return (
-      <View style={styles.cameraContainer}>
-        <View style={styles.biometricOverlay}>
-          <View style={styles.overlayStatusBubble}>
-            {isVerifyingBiometric ? (
-              <ActivityIndicator size="large" color="#ffffff" />
-            ) : (
-              <Icon source="fingerprint" size={42} color="#ffffff" />
-            )}
-            <Text style={styles.overlayStatusText}>
-              {isVerifyingBiometric ? 'Verifying identity' : 'Biometric verification required'}
-            </Text>
-            {!isVerifyingBiometric && (
-              <AppButton
-                variant="outline"
-                icon="fingerprint"
-                textColor="#ffffff"
-                style={styles.biometricRetryButton}
-                labelStyle={styles.biometricRetryLabel}
-                onPress={() => {
-                  setSnackbarVisible(false);
-                  setBiometricAttemptVersion((current) => current + 1);
-                }}>
-                Verify again
-              </AppButton>
-            )}
-          </View>
-        </View>
-        <ScanToast
-          visible={snackbarVisible}
-          message={snackbarMessage}
-          tone={snackbarTone}
-          onDismiss={() => setSnackbarVisible(false)}
-        />
-      </View>
+      <LocalFaceVerificationGate
+        isActive={isFocused}
+        onVerified={() => {
+          setIsFaceVerified(true);
+          setSnackbarVisible(false);
+          setLocationCheckVersion((current) => current + 1);
+        }}
+      />
     );
   }
 
@@ -649,7 +579,7 @@ export default function ScanTab() {
 
   return (
     <View style={styles.cameraContainer}>
-      {isFocused && isBiometricVerified && (
+      {isFocused && isFaceVerified && (
         <CameraView
           style={StyleSheet.absoluteFillObject}
           facing="back"
@@ -685,7 +615,7 @@ export default function ScanTab() {
             <View style={[styles.corner, styles.bottomRightCorner]} />
 
             {/* Animated Laser Line */}
-            {isScanning && isBiometricVerified && (
+            {isScanning && isFaceVerified && (
               <Animated.View
                 style={[
                   styles.laserLine,
@@ -710,36 +640,6 @@ export default function ScanTab() {
         <View style={styles.locationCheckOverlay}>
           <ActivityIndicator size="small" color="#ffffff" />
           <Text style={styles.locationCheckText}>Checking location...</Text>
-        </View>
-      )}
-
-      {!isBiometricVerified && !scanOverlay && (
-        <View style={styles.biometricOverlay}>
-          <View style={styles.overlayStatusBubble}>
-            {isVerifyingBiometric ? (
-              <ActivityIndicator size="large" color="#ffffff" />
-            ) : (
-              <Icon source="fingerprint" size={42} color="#ffffff" />
-            )}
-            <Text style={styles.overlayStatusText}>
-              {isVerifyingBiometric ? 'Verifying identity' : 'Biometric verification required'}
-            </Text>
-            {!isVerifyingBiometric && (
-              <AppButton
-                variant="outline"
-                icon="fingerprint"
-                textColor="#ffffff"
-                style={styles.biometricRetryButton}
-                labelStyle={styles.biometricRetryLabel}
-                onPress={() => {
-                  setSnackbarVisible(false);
-                  setIsBiometricVerified(false);
-                  setBiometricAttemptVersion((current) => current + 1);
-                }}>
-                Verify again
-              </AppButton>
-            )}
-          </View>
         </View>
       )}
 
@@ -919,14 +819,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 20,
   },
-  biometricOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    zIndex: 22,
-  },
   locationCheckOverlay: {
     position: 'absolute',
     left: Spacing.four,
@@ -966,13 +858,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     textAlign: 'center',
-  },
-  biometricRetryButton: {
-    borderColor: 'rgba(255, 255, 255, 0.42)',
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  biometricRetryLabel: {
-    color: '#ffffff',
   },
   successCheck: {
     width: 112,

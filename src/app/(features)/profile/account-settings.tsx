@@ -1,9 +1,17 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Switch, Text } from 'react-native-paper';
 
-import { Screen } from '@/components/ui';
+import { AppButton, Screen } from '@/components/ui';
 import { BottomTabInset, Colors, Spacing, Typography } from '@/constants/theme';
+import {
+  clearLocalFaceEnrollment,
+  clearLocalFaceVerificationSession,
+  getLocalFaceEnrollment,
+  getLocalFaceStaffIdentity,
+} from '@/features/face-verification';
+import { useSession } from '@/lib/auth/session-context';
 
 const settings = [
   {
@@ -39,6 +47,96 @@ const settings = [
 ] as const;
 
 export default function AccountSettingsScreen() {
+  const { session } = useSession();
+  const [hasFaceEnrollment, setHasFaceEnrollment] = useState(false);
+  const [isCheckingFaceEnrollment, setIsCheckingFaceEnrollment] = useState(true);
+  const [isDeletingFaceEnrollment, setIsDeletingFaceEnrollment] = useState(false);
+  const staffIdentity = getLocalFaceStaffIdentity({
+    staffIdentificationNumber: session?.staffIdentificationNumber,
+    tenantId: session?.tenantId,
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!staffIdentity) {
+      setHasFaceEnrollment(false);
+      setIsCheckingFaceEnrollment(false);
+      return;
+    }
+
+    setIsCheckingFaceEnrollment(true);
+    getLocalFaceEnrollment(staffIdentity)
+      .then((enrollment) => {
+        if (isMounted) {
+          setHasFaceEnrollment(Boolean(enrollment));
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setHasFaceEnrollment(false);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsCheckingFaceEnrollment(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [staffIdentity]);
+
+  const deleteFaceEnrollment = async () => {
+    if (!staffIdentity) {
+      return;
+    }
+
+    setIsDeletingFaceEnrollment(true);
+
+    try {
+      await clearLocalFaceEnrollment(staffIdentity);
+      clearLocalFaceVerificationSession();
+      setHasFaceEnrollment(false);
+    } finally {
+      setIsDeletingFaceEnrollment(false);
+    }
+  };
+
+  const handleDeleteFaceEnrollment = () => {
+    if (!hasFaceEnrollment || isCheckingFaceEnrollment || isDeletingFaceEnrollment) {
+      return;
+    }
+
+    Alert.alert(
+      'Delete enrolled face?',
+      'You will need to enroll your face again before scanning attendance QR codes.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void deleteFaceEnrollment();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleFaceEnrollmentAction = () => {
+    if (hasFaceEnrollment) {
+      handleDeleteFaceEnrollment();
+      return;
+    }
+
+    router.push('/face-enrollment');
+  };
+
   return (
     <Screen
       backgroundColor={Colors.light.appBgLight}
@@ -60,7 +158,7 @@ export default function AccountSettingsScreen() {
         </View>
         <View style={styles.introText}>
           <Text style={styles.introTitle}>Preferences</Text>
-          <Text style={styles.introDescription}>These controls are placeholders and will be enabled when account preferences are implemented.</Text>
+          <Text style={styles.introDescription}>Manage notifications, appearance, and local security settings for this device.</Text>
         </View>
       </View>
 
@@ -81,6 +179,30 @@ export default function AccountSettingsScreen() {
             />
           </View>
         ))}
+      </View>
+
+      <View style={styles.securityCard}>
+        <View style={styles.securityHeader}>
+          <View style={styles.securityIcon}>
+            <Icon source="face-recognition" size={20} color={Colors.light.primary} />
+          </View>
+          <View style={styles.settingText}>
+            <Text style={styles.settingTitle}>Face enrollment</Text>
+            <Text style={styles.settingDescription}>
+              {hasFaceEnrollment
+                ? 'A face enrollment is saved on this device.'
+                : 'No face enrollment is saved on this device.'}
+            </Text>
+          </View>
+        </View>
+        <AppButton
+          variant={hasFaceEnrollment ? 'danger' : 'outline'}
+          icon={hasFaceEnrollment ? 'trash-can-outline' : undefined}
+          loading={isDeletingFaceEnrollment}
+          disabled={isCheckingFaceEnrollment || isDeletingFaceEnrollment}
+          onPress={handleFaceEnrollmentAction}>
+          {hasFaceEnrollment ? 'Delete enrolled face' : 'Enroll new face'}
+        </AppButton>
       </View>
     </Screen>
   );
@@ -158,6 +280,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
     overflow: 'hidden',
+  },
+  securityCard: {
+    gap: Spacing.three,
+    borderRadius: 22,
+    backgroundColor: Colors.light.surface,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    padding: Spacing.four,
+  },
+  securityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  securityIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.light.primaryMuted,
   },
   settingRow: {
     minHeight: 82,

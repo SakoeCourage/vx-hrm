@@ -9,56 +9,56 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { paperTheme } from '@/constants/paper-theme';
 import { SessionProvider } from '@/lib/auth/session-context';
-import { clearAttendanceBiometricSession } from '@/lib/device/attendance-biometric-gate';
+import { clearLocalFaceVerificationSession } from '@/features/face-verification';
 import { queryClient } from '@/lib/query-client';
 import '@/global.css';
 
-const BIOMETRIC_BACKGROUND_CLEAR_DELAY_MS = 2500;
+const FACE_VERIFICATION_BACKGROUND_CLEAR_DELAY_MS = 2500;
 
 export default function RootLayout() {
-  const biometricClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const biometricBackgroundedAtRef = useRef<number | null>(null);
+  const faceVerificationClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const faceVerificationBackgroundedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const cancelScheduledBiometricClear = () => {
-      if (!biometricClearTimerRef.current) {
+    const cancelScheduledFaceVerificationClear = () => {
+      if (!faceVerificationClearTimerRef.current) {
         return;
       }
 
-      clearTimeout(biometricClearTimerRef.current);
-      biometricClearTimerRef.current = null;
+      clearTimeout(faceVerificationClearTimerRef.current);
+      faceVerificationClearTimerRef.current = null;
     };
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'background') {
-        cancelScheduledBiometricClear();
-        biometricBackgroundedAtRef.current = Date.now();
-        biometricClearTimerRef.current = setTimeout(() => {
-          clearAttendanceBiometricSession();
-          biometricBackgroundedAtRef.current = null;
-          biometricClearTimerRef.current = null;
-        }, BIOMETRIC_BACKGROUND_CLEAR_DELAY_MS);
+        cancelScheduledFaceVerificationClear();
+        faceVerificationBackgroundedAtRef.current = Date.now();
+        faceVerificationClearTimerRef.current = setTimeout(() => {
+          clearLocalFaceVerificationSession();
+          faceVerificationBackgroundedAtRef.current = null;
+          faceVerificationClearTimerRef.current = null;
+        }, FACE_VERIFICATION_BACKGROUND_CLEAR_DELAY_MS);
         return;
       }
 
       if (nextState === 'active') {
-        const backgroundedAt = biometricBackgroundedAtRef.current;
-        cancelScheduledBiometricClear();
+        const backgroundedAt = faceVerificationBackgroundedAtRef.current;
+        cancelScheduledFaceVerificationClear();
 
         if (
           backgroundedAt &&
-          Date.now() - backgroundedAt >= BIOMETRIC_BACKGROUND_CLEAR_DELAY_MS
+          Date.now() - backgroundedAt >= FACE_VERIFICATION_BACKGROUND_CLEAR_DELAY_MS
         ) {
-          clearAttendanceBiometricSession();
+          clearLocalFaceVerificationSession();
         }
 
-        biometricBackgroundedAtRef.current = null;
+        faceVerificationBackgroundedAtRef.current = null;
       }
     });
 
     return () => {
-      cancelScheduledBiometricClear();
-      biometricBackgroundedAtRef.current = null;
+      cancelScheduledFaceVerificationClear();
+      faceVerificationBackgroundedAtRef.current = null;
       subscription.remove();
     };
   }, []);

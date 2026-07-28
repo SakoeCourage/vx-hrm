@@ -1,8 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { BottomSheetModal } from '@gorhom/bottom-sheet';
-import { Camera } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Image, LayoutChangeEvent, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
@@ -39,7 +37,6 @@ import {
 import { useSession } from '@/lib/auth/session-context';
 import { AuthStaff, StaffSession } from '@/lib/auth/types';
 import { useAuthenticatedRequest } from '@/lib/auth/use-authenticated-request';
-import { verifyAttendanceBiometricSession } from '@/lib/device/attendance-biometric-gate';
 import { useDeviceId } from '@/lib/hooks/use-device-id';
 import {
   AttendanceActionLoading,
@@ -276,39 +273,12 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
       return;
     }
 
-    try {
-      await verifyAttendanceBiometricSession();
-
-      const locationServicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!locationServicesEnabled) {
-        throw new Error('Turn on Location Services before clocking in or out.');
-      }
-
-      const locationPermission = await Location.requestForegroundPermissionsAsync();
-      if (!locationPermission.granted) {
-        throw new Error('Location permission is required before clocking in or out.');
-      }
-
-      const cameraPermission = await Camera.requestCameraPermissionsAsync();
-      if (!cameraPermission.granted) {
-        throw new Error('Camera permission is required to scan the attendance QR code.');
-      }
-
-      router.push('/scan');
-      setTimeout(() => {
-        slideIsHeld.value = 0;
-        slideTranslateX.value = withTiming(0, { duration: 180 });
-        setSlideClockState('idle');
-      }, 240);
-    } catch (error) {
-      triggerErrorHaptic();
-      resetSlideClock();
-      setAttendanceToast({
-        visible: true,
-        message: error instanceof Error ? error.message : 'Unable to start attendance verification.',
-        tone: 'danger',
-      });
-    }
+    router.push('/scan');
+    setTimeout(() => {
+      slideIsHeld.value = 0;
+      slideTranslateX.value = withTiming(0, { duration: 180 });
+      setSlideClockState('idle');
+    }, 240);
   };
 
   useEffect(() => {

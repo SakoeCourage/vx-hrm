@@ -3,16 +3,15 @@
     "name": "vx-hrm",
     "slug": "vx-hrm",
     "version": "1.0.0",
+    "newArchEnabled": true,
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "vxhrm",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/icon.png",
-      "infoPlist": {
-        "NSFaceIDUsageDescription": "Allow VX HRM to verify your identity before clocking in or out."
-      },
-      "bundleIdentifier": "com.variablexsolutions.vxhrm"
+      "bundleIdentifier": "com.variablexsolutions.vxhrm",
+      "deploymentTarget": "15.5"
     },
     "android": {
       "package": "com.variablexsolutions.vxhrm",
@@ -21,12 +20,7 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
-      ]
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
@@ -44,12 +38,6 @@
       ],
       "expo-font",
       "expo-web-browser",
-      [
-        "expo-local-authentication",
-        {
-          "faceIDPermission": "Allow VX HRM to verify your identity before clocking in or out."
-        }
-      ],
       "@react-native-community/datetimepicker",
       "expo-secure-store",
       [
@@ -58,7 +46,8 @@
           "photosPermission": "Allow VX HRM to select a passport picture from your photos.",
           "cameraPermission": "Allow VX HRM to capture your passport picture."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

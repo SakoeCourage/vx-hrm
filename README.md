@@ -67,13 +67,13 @@ npm run lint
 ```text
 src/app/                 Expo Router routes
 src/app/(tabs)/          Authenticated tab screens
+src/app/(features)/      Feature route screens
+src/features/            Feature implementations shared by routes
 src/components/ui/       Shared UI components
 src/constants/           Theme and Paper configuration
-src/features/auth/       Login, OTP, and onboarding routing flow
-src/features/home/       Home shell and formatting helpers
 src/lib/api/             Gateway API client
 src/lib/auth/            Session, token, staff auth, and prerequisite helpers
-src/lib/device/          Biometric and device helpers
+src/lib/device/          Device helpers
 app-doc/                 API bootstrap documentation
 assets/                  App icons, splash, fonts, and images
 ```
