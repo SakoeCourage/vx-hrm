@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
-import { StaffSession } from '@/lib/auth/types';
+import { AuthStaff, StaffSession } from '@/lib/auth/types';
 
 const SESSION_KEY = 'vx_hrm_staff_session';
 const SESSION_PROFILE_KEY = 'vx_hrm_staff_session_profile';
@@ -44,10 +44,19 @@ export async function getStoredSession() {
   return session;
 }
 
+export async function getRememberedStaffProfile() {
+  const profileValue = await SecureStore.getItemAsync(SESSION_PROFILE_KEY);
+
+  if (!profileValue) {
+    return null;
+  }
+
+  return JSON.parse(profileValue) as AuthStaff;
+}
+
 export async function clearStoredSession() {
   await Promise.all([
     SecureStore.deleteItemAsync(SESSION_KEY),
-    SecureStore.deleteItemAsync(SESSION_PROFILE_KEY),
     SecureStore.deleteItemAsync(SESSION_ACCESS_TOKEN_KEY),
     SecureStore.deleteItemAsync(SESSION_REFRESH_TOKEN_KEY),
   ]);

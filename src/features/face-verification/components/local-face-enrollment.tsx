@@ -33,6 +33,7 @@ import { clearLocalFaceVerificationSession } from '../face-verification-session'
 import {
   averageFaceEmbeddings,
   generateFaceEmbeddingFromImage,
+  isFaceRecognitionRuntimeAvailable,
   type FaceEmbedding,
 } from '../face-recognition-service';
 import {
@@ -45,6 +46,7 @@ import {
   FACE_ENROLLMENT_FRAME_WIDTH,
   FaceEnrollmentFrameMeter,
 } from './face-enrollment-frame-meter';
+import { FaceRecognitionUnavailable } from './face-recognition-unavailable';
 import { FaceVerificationNativeUnavailable } from './face-verification-native-unavailable';
 import { LocalFaceDetectorCamera } from './local-face-detector-camera';
 
@@ -59,7 +61,12 @@ const STEP_ACCEPTED_VISUAL_DELAY_MS = 420;
 const MIDDLE_MASK_COLOR = 'rgba(255, 255, 255, 0.78)';
 
 export function LocalFaceEnrollment() {
+  const isRecognitionRuntimeAvailable = useMemo(() => isFaceRecognitionRuntimeAvailable(), []);
   const nativeModuleResult = useMemo(() => loadFaceVerificationNativeModules(), []);
+
+  if (!isRecognitionRuntimeAvailable) {
+    return <FaceRecognitionUnavailable />;
+  }
 
   if (!nativeModuleResult.modules) {
     return <FaceVerificationNativeUnavailable error={nativeModuleResult.error} />;

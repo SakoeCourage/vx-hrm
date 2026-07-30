@@ -1,14 +1,31 @@
 import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { decode } from 'jpeg-js';
-import { InferenceSession, Tensor } from 'onnxruntime-react-native';
+import type {
+  InferenceSession as OnnxInferenceSession,
+  Tensor as OnnxTensor,
+} from 'onnxruntime-react-native';
 
 import faceModelAsset from '../../../assets/models/facenet.onnx';
 
 const FACE_MODEL_INPUT_SIZE = 160;
-const FACE_RECOGNITION_THRESHOLD = 0.5;
+const FACE_RECOGNITION_THRESHOLD = 0.7;
 
-let sessionPromise: Promise<InferenceSession> | null = null;
+declare const require: (moduleName: string) => unknown;
+
+type OnnxRuntime = {
+  InferenceSession: {
+    create: (uri: string) => Promise<OnnxInferenceSession>;
+  };
+  Tensor: new (
+    type: 'float32',
+    data: Float32Array,
+    dimensions: readonly number[]
+  ) => OnnxTensor;
+};
+
+let onnxRuntime: OnnxRuntime | null = null;
+let sessionPromise: Promise<OnnxInferenceSession> | null = null;
 
 export type FaceEmbedding = number[];
 
@@ -20,24 +37,53 @@ export type FaceRecognitionMatch = {
 
 async function getFaceRecognitionSession() {
   if (!sessionPromise) {
+    const runtime = loadOnnxRuntime();
+
     sessionPromise = Asset.fromModule(faceModelAsset)
       .downloadAsync()
       .then((asset) => {
         const modelUri = asset.localUri ?? asset.uri;
-        return InferenceSession.create(modelUri);
+        return runtime.InferenceSession.create(modelUri);
       });
   }
 
   return sessionPromise;
 }
 
+function loadOnnxRuntime() {
+  if (onnxRuntime) {
+    return onnxRuntime;
+  }
+
+  try {
+    onnxRuntime = require('onnxruntime-react-native') as OnnxRuntime;
+    return onnxRuntime;
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? `Face matching unavailable: ${error.message}`
+        : 'Face matching unavailable: ONNX runtime could not be loaded.'
+    );
+  }
+}
+
+export function isFaceRecognitionRuntimeAvailable() {
+  try {
+    loadOnnxRuntime();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function generateFaceEmbeddingFromImage(imageUri: string) {
+  const runtime = loadOnnxRuntime();
   const tensorData = await imageUriToFaceNetTensor(imageUri);
   const session = await getFaceRecognitionSession();
   const inputName = session.inputNames[0] ?? 'input';
   const outputName = session.outputNames[0] ?? 'embedding';
-  const feeds: Record<string, Tensor> = {
-    [inputName]: new Tensor('float32', tensorData, [1, 3, FACE_MODEL_INPUT_SIZE, FACE_MODEL_INPUT_SIZE]),
+  const feeds: Record<string, OnnxTensor> = {
+    [inputName]: new runtime.Tensor('float32', tensorData, [1, 3, FACE_MODEL_INPUT_SIZE, FACE_MODEL_INPUT_SIZE]),
   };
   const results = await session.run(feeds);
   const output = results[outputName] ?? results[session.outputNames[0]];

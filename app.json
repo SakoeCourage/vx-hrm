@@ -10,8 +10,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "com.variablexsolutions.vxhrm",
-      "deploymentTarget": "15.5"
+      "bundleIdentifier": "com.variablexsolutions.vxhrm"
     },
     "android": {
       "package": "com.variablexsolutions.vxhrm",
@@ -47,7 +46,18 @@
           "cameraPermission": "Allow VX HRM to capture your passport picture."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.5"
+          },
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -10,7 +10,10 @@ import { AppButton } from '@/components/ui';
 import { Colors, Spacing, Typography } from '@/constants/theme';
 import { useSession } from '@/lib/auth/session-context';
 
-import { evaluateFaceForFullFeatureCapture } from '../face-detection-policy';
+import {
+  evaluateFaceForFullFeatureCapture,
+  type FaceDetectionInput,
+} from '../face-detection-policy';
 import { SILENT_FACE_CAPTURE_OPTIONS } from '../face-camera-capture-options';
 import {
   getLocalFaceEnrollment,
@@ -26,6 +29,7 @@ import { markLocalFaceVerificationSession } from '../face-verification-session';
 import {
   compareFaceEmbeddings,
   generateFaceEmbeddingFromImage,
+  isFaceRecognitionRuntimeAvailable,
   type FaceEmbedding,
 } from '../face-recognition-service';
 import { logFaceVerificationMatch } from '../face-verification-diagnostics';
@@ -45,6 +49,7 @@ const REQUIRED_MATCHED_FACE_CAPTURES = 2;
 const FAILED_MATCH_RETRY_DELAY_MS = 1000;
 const FINAL_MATCH_PROGRESS_DELAY_MS = 520;
 const GUIDE_MESSAGE_MIN_VISIBLE_MS = 1400;
+const MIN_VERIFICATION_FACE_FRAME_RATIO = 0.45;
 const VERIFICATION_MASK_COLOR = 'rgba(255, 255, 255, 0.78)';
 
 type LocalFaceVerificationGateProps = {
@@ -57,6 +62,7 @@ export function LocalFaceVerificationGate({
   onVerified,
 }: LocalFaceVerificationGateProps) {
   const { session } = useSession();
+  const isRecognitionRuntimeAvailable = useMemo(() => isFaceRecognitionRuntimeAvailable(), []);
   const staffIdentity = getLocalFaceStaffIdentity({
     staffIdentificationNumber: session?.staffIdentificationNumber,
     tenantId: session?.tenantId,
@@ -105,6 +111,10 @@ export function LocalFaceVerificationGate({
 
   if (!staffIdentity || enrollmentState === 'missing') {
     return <FaceEnrollmentRequired onEnrollPress={() => router.push('/face-enrollment')} />;
+  }
+
+  if (!isRecognitionRuntimeAvailable) {
+    return <FaceRecognitionUnavailable />;
   }
 
   if (!hasUsableLocalFaceRecognitionTemplate(enrollmentRecord)) {
@@ -248,6 +258,12 @@ function LoadedLocalFaceVerificationGate({
 
     if (!result.isAccepted) {
       stableFaceReadsRef.current = 0;
+      return;
+    }
+
+    if (!hasEnoughFaceCoverageForVerification(faces[0])) {
+      stableFaceReadsRef.current = 0;
+      setMessage('Move a little closer.');
       return;
     }
 
@@ -427,6 +443,19 @@ function LoadedLocalFaceVerificationGate({
       </View>
     </View>
   );
+}
+
+function hasEnoughFaceCoverageForVerification(face: FaceDetectionInput) {
+  const frameWidth = face.frameWidth || 0;
+  const frameHeight = face.frameHeight || 0;
+  const minFrameSide = Math.min(frameWidth, frameHeight);
+
+  if (minFrameSide <= 0) {
+    return true;
+  }
+
+  const minFaceSide = Math.min(face.bounds.width, face.bounds.height);
+  return minFaceSide / minFrameSide >= MIN_VERIFICATION_FACE_FRAME_RATIO;
 }
 
 function createRoundedCutoutPath({

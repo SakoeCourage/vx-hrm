@@ -22,6 +22,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppBottomSheet, AppSnackbar, Screen } from '@/components/ui';
 import { BottomTabInset, Colors, Spacing, Typography } from '@/constants/theme';
@@ -81,6 +82,7 @@ function triggerErrorHaptic() {
 
 export function HomeShell({ staff, onSignOut }: HomeShellProps) {
   const { session } = useSession();
+  const insets = useSafeAreaInsets();
   const authenticatedRequest = useAuthenticatedRequest();
   const scrollY = useSharedValue(0);
   const leaveSheetRef = useRef<BottomSheetModal>(null);
@@ -433,14 +435,40 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
     height: interpolate(scrollY.value, [0, 96], [16, 0], Extrapolation.CLAMP),
   }));
 
+  const heroAnimatedStyle = useAnimatedStyle(() => {
+    const pullDistance = Math.abs(Math.min(scrollY.value, 0));
+
+    return {
+      transform: [
+        {
+          translateY: interpolate(pullDistance, [0, 96], [0, -18], Extrapolation.CLAMP),
+        },
+        {
+          scale: interpolate(pullDistance, [0, 96], [1, 1.035], Extrapolation.CLAMP),
+        },
+      ],
+    };
+  });
+
+  const stickyHeaderAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [96, 136], [0, 1], Extrapolation.CLAMP),
+    transform: [
+      {
+        translateY: interpolate(scrollY.value, [96, 136], [-10, 0], Extrapolation.CLAMP),
+      },
+    ],
+  }));
+
   return (
     <Screen
       backgroundColor={Colors.light.appBgLight}
-      bounces={false}
+      bounces
       contentStyle={styles.content}
       header={
-        <Animated.View style={[styles.homeAppBar, appBarAnimatedStyle]}>
-          <Animated.View style={[styles.avatar, avatarAnimatedStyle]}>
+        <Animated.View
+          pointerEvents={showHeaderAttendanceAction ? 'auto' : 'none'}
+          style={[styles.stickyHomeAppBar, { top: insets.top }, stickyHeaderAnimatedStyle]}>
+          <Animated.View style={[styles.avatar, styles.stickyAvatar]}>
             {staff.passportPicture ? (
               <Image source={{ uri: staff.passportPicture }} style={styles.avatarImage} />
             ) : (
@@ -449,19 +477,12 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
           </Animated.View>
 
           <View style={styles.heroIdentity}>
-            <Animated.View style={tenantAnimatedStyle}>
-              <Text style={styles.heroEyebrow}>{tenantName}</Text>
-            </Animated.View>
-            <Text style={styles.heroName}>{staffName}</Text>
-            <Animated.View style={metaAnimatedStyle}>
-              <Text style={styles.heroMeta}>{departmentUnit}</Text>
-            </Animated.View>
+            <Text style={styles.stickyHeroName}>{staffName}</Text>
+            <Text style={styles.stickyHeroMeta}>{departmentUnit}</Text>
           </View>
           <Pressable
             disabled={headerAttendanceAction && (slideClockState === 'loading' || !deviceId)}
-            style={[
-              styles.notificationButton,
-            ]}
+            style={styles.notificationButton}
             onPress={headerAttendanceAction ? prepareAttendanceScan : () => router.push('/notifications')}>
             {headerAttendanceAction && slideClockState === 'loading' ? (
               <ActivityIndicator
@@ -493,157 +514,212 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
       scrollEventThrottle={16}
       statusBarBackgroundColor={Colors.light.primary}
       statusBarStyle="light">
-      <View style={styles.hero}>
-        <View style={styles.attendanceCard} onLayout={handleAttendanceCardLayout}>
-          {showInitialLoading ? (
-            <AttendanceCardSkeleton />
-          ) : (
-            <>
-              <View style={styles.cardHeading}>
-                <View style={styles.todayMetaRow}>
-                  <Text style={styles.cardLabel}>Today</Text>
-                  <View style={styles.todayDot} />
-                  <Text style={styles.cardDate}>{currentDate}</Text>
+      <View style={styles.heroShell}>
+        <View style={styles.heroOverscrollBackdrop} />
+        <Animated.View style={[styles.hero, heroAnimatedStyle]}>
+          <Animated.View style={[styles.homeAppBar, styles.heroAppBar, appBarAnimatedStyle]}>
+            <Animated.View style={[styles.avatar, avatarAnimatedStyle]}>
+              {staff.passportPicture ? (
+                <Image source={{ uri: staff.passportPicture }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+            </Animated.View>
+
+            <View style={styles.heroIdentity}>
+              <Animated.View style={tenantAnimatedStyle}>
+                <Text style={styles.heroEyebrow}>{tenantName}</Text>
+              </Animated.View>
+              <Text style={styles.heroName}>{staffName}</Text>
+              <Animated.View style={metaAnimatedStyle}>
+                <Text style={styles.heroMeta}>{departmentUnit}</Text>
+              </Animated.View>
+            </View>
+            <Pressable
+              disabled={headerAttendanceAction && (slideClockState === 'loading' || !deviceId)}
+              style={styles.notificationButton}
+              onPress={headerAttendanceAction ? prepareAttendanceScan : () => router.push('/notifications')}>
+              {headerAttendanceAction && slideClockState === 'loading' ? (
+                <ActivityIndicator
+                  size={18}
+                  color={isClockedIn ? Colors.light.danger : Colors.light.success}
+                />
+              ) : (
+                <Icon
+                  source={headerAttendanceAction ? (isClockedIn ? 'timer-off-outline' : 'timer-plus-outline') : 'bell-outline'}
+                  size={20}
+                  color={
+                    headerAttendanceAction
+                      ? isClockedIn
+                        ? Colors.light.danger
+                        : Colors.light.success
+                      : Colors.light.primary
+                  }
+                />
+              )}
+              {!headerAttendanceAction && unreadCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                 </View>
-                {attendanceStatus?.todaysShift?.shiftName && (
-                  <Text style={styles.cardShift}>
-                    {toSentenceCase(attendanceStatus.todaysShift.shiftName)}
-                    {attendanceStatus.todaysShift.expectedStart && attendanceStatus.todaysShift.expectedEnd
-                      ? `  ·  ${formatShiftTime(attendanceStatus.todaysShift.expectedStart)} – ${formatShiftTime(attendanceStatus.todaysShift.expectedEnd)}`
-                      : ''}
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.attendanceDivider} />
-
-              <View style={styles.timeGrid}>
-                <View style={styles.timeTile}>
-                  <Text style={styles.timeLabel}>
-                    {clockInTime === '--:--' ? 'Clock in' : 'Last clocked in'}
-                  </Text>
-                  <Text style={styles.timeValue}>{clockInTime}</Text>
-                  <Text style={clockInTime === '--:--' ? styles.timePending : styles.timeSuccess}>
-                    {clockInTime === '--:--' ? 'Not yet' : getPunchEvalLabel(lastCheckIn?.evaluation) || 'On time'}
-                  </Text>
-                </View>
-
-                <View style={[styles.timeTile, attendanceStatus?.hasMissedCheckout && styles.timeTileDanger]}>
-                  <Text style={[styles.timeLabel, attendanceStatus?.hasMissedCheckout && styles.timeLabelDanger]}>
-                    {attendanceStatus?.hasMissedCheckout
-                      ? 'Missed clock out'
-                      : clockOutTime === '--:--'
-                        ? 'Clock out'
-                        : 'Last clocked out'}
-                  </Text>
-                  {attendanceStatus?.hasMissedCheckout ? (
-                    <View style={styles.missedClockOutValue}>
-                      <Icon source="alert-circle-outline" size={18} color="#ffffff" />
-                      <Text style={[styles.timeValue, styles.timeValueDanger]}>Missed</Text>
-                    </View>
-                  ) : (
-                    <>
-                      <Text style={styles.timeValue}>{clockOutTime}</Text>
-                      <Text style={clockOutTime === '--:--' ? styles.timePending : styles.timeSuccess}>
-                        {clockOutTime === '--:--' ? 'Not yet' : attendanceStatus?.todaysTotalWorkedTime || 'Done'}
-                      </Text>
-                    </>
+              )}
+            </Pressable>
+          </Animated.View>
+          <View style={styles.attendanceCard} onLayout={handleAttendanceCardLayout}>
+            {showInitialLoading ? (
+              <AttendanceCardSkeleton />
+            ) : (
+              <>
+                <View style={styles.cardHeading}>
+                  <View style={styles.todayMetaRow}>
+                    <Text style={styles.cardLabel}>Today</Text>
+                    <View style={styles.todayDot} />
+                    <Text style={styles.cardDate}>{currentDate}</Text>
+                  </View>
+                  {attendanceStatus?.todaysShift?.shiftName && (
+                    <Text style={styles.cardShift}>
+                      {toSentenceCase(attendanceStatus.todaysShift.shiftName)}
+                      {attendanceStatus.todaysShift.expectedStart && attendanceStatus.todaysShift.expectedEnd
+                        ? `  ·  ${formatShiftTime(attendanceStatus.todaysShift.expectedStart)} – ${formatShiftTime(attendanceStatus.todaysShift.expectedEnd)}`
+                        : ''}
+                    </Text>
                   )}
                 </View>
-              </View>
 
-              {activeClockAction && (
-                <GestureDetector gesture={slideActionGesture}>
-                  <Animated.View
-                    entering={FadeIn.duration(180)}
-                    exiting={FadeOut.duration(140)}
-                    style={[styles.slideClockTrack, slideTrackAnimatedStyle]}>
-                    <Animated.View style={[styles.slideClockFill, slideFillAnimatedStyle]} />
+                <View style={styles.attendanceDivider} />
+
+                <View style={styles.timeGrid}>
+                  <View style={styles.timeTile}>
+                    <Text style={styles.timeLabel}>
+                      {clockInTime === '--:--' ? 'Clock in' : 'Last clocked in'}
+                    </Text>
+                    <Text style={styles.timeValue}>{clockInTime}</Text>
+                    <Text style={clockInTime === '--:--' ? styles.timePending : styles.timeSuccess}>
+                      {clockInTime === '--:--' ? 'Not yet' : getPunchEvalLabel(lastCheckIn?.evaluation) || 'On time'}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.timeTile, attendanceStatus?.hasMissedCheckout && styles.timeTileDanger]}>
+                    <Text style={[styles.timeLabel, attendanceStatus?.hasMissedCheckout && styles.timeLabelDanger]}>
+                      {attendanceStatus?.hasMissedCheckout
+                        ? 'Missed clock out'
+                        : clockOutTime === '--:--'
+                          ? 'Clock out'
+                          : 'Last clocked out'}
+                    </Text>
+                    {attendanceStatus?.hasMissedCheckout ? (
+                      <View style={styles.missedClockOutValue}>
+                        <Icon source="alert-circle-outline" size={18} color="#ffffff" />
+                        <Text style={[styles.timeValue, styles.timeValueDanger]}>Missed</Text>
+                      </View>
+                    ) : (
+                      <>
+                        <Text style={styles.timeValue}>{clockOutTime}</Text>
+                        <Text style={clockOutTime === '--:--' ? styles.timePending : styles.timeSuccess}>
+                          {clockOutTime === '--:--' ? 'Not yet' : attendanceStatus?.todaysTotalWorkedTime || 'Done'}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                </View>
+
+                {activeClockAction && (
+                  <GestureDetector gesture={slideActionGesture}>
                     <Animated.View
+                      entering={FadeIn.duration(180)}
+                      exiting={FadeOut.duration(140)}
                       style={[
-                        styles.slideClockSheen,
-                        activeClockAction === 'checkout' ? styles.slideClockSheenDanger : styles.slideClockSheenSuccess,
-                        slideSheenAnimatedStyle,
-                      ]}
-                    />
-                    <Animated.View style={[styles.slideClockLabelWrap, slideLabelAnimatedStyle]}>
-                      {slideClockState === 'loading' ? (
-                        <AttendanceActionLoading
-                          label={activeClockAction === 'checkout' ? 'Clocking out' : 'Clocking in'}
-                        />
-                      ) : slideClockState === 'success' ? (
-                        <Text style={styles.slideClockLabel}>Done</Text>
-                      ) : (
-                        <>
-                          <Text style={styles.slideClockLabel}>
-                            {activeClockAction === 'checkout' ? 'Slide to clock out' : 'Slide to clock in'}
-                          </Text>
-                          <Text style={styles.slideClockTime}>{currentTime}</Text>
-                        </>
-                      )}
-                    </Animated.View>
-                    <Animated.View
-                      style={[
-                        styles.slideClockThumb,
-                        activeClockAction === 'checkout' ? styles.slideClockThumbDanger : styles.slideClockThumbSuccess,
-                        slideThumbAnimatedStyle,
+                        styles.slideClockTrack,
+                        slideTrackAnimatedStyle,
                       ]}>
-                      {slideClockState === 'loading' ? (
-                        <ActivityIndicator size={22} color="#ffffff" />
-                      ) : slideClockState === 'success' ? (
-                        <Icon source="check" size={28} color="#ffffff" />
-                      ) : (
-                        <Icon source="chevron-right" size={30} color="#ffffff" />
-                      )}
+                      <Animated.View style={[styles.slideClockFill, slideFillAnimatedStyle]} />
+                      <Animated.View
+                        style={[
+                          styles.slideClockSheen,
+                          activeClockAction === 'checkout' ? styles.slideClockSheenDanger : styles.slideClockSheenSuccess,
+                          slideSheenAnimatedStyle,
+                        ]}
+                      />
+                      <Animated.View style={[styles.slideClockLabelWrap, slideLabelAnimatedStyle]}>
+                        {slideClockState === 'loading' ? (
+                          <AttendanceActionLoading
+                            label={activeClockAction === 'checkout' ? 'Clocking out' : 'Clocking in'}
+                          />
+                        ) : slideClockState === 'success' ? (
+                          <Text style={styles.slideClockLabel}>Done</Text>
+                        ) : (
+                          <>
+                            <Text style={styles.slideClockLabel}>
+                              {activeClockAction === 'checkout' ? 'Slide to clock out' : 'Slide to clock in'}
+                            </Text>
+                            <Text style={styles.slideClockTime}>{currentTime}</Text>
+                          </>
+                        )}
+                      </Animated.View>
+                      <Animated.View
+                        style={[
+                          styles.slideClockThumb,
+                          activeClockAction === 'checkout' ? styles.slideClockThumbDanger : styles.slideClockThumbSuccess,
+                          slideThumbAnimatedStyle,
+                        ]}>
+                        {slideClockState === 'loading' ? (
+                          <ActivityIndicator size={22} color="#ffffff" />
+                        ) : slideClockState === 'success' ? (
+                          <Icon source="check" size={28} color="#ffffff" />
+                        ) : (
+                          <Icon source="chevron-right" size={30} color="#ffffff" />
+                        )}
+                      </Animated.View>
                     </Animated.View>
-                  </Animated.View>
-                </GestureDetector>
-              )}
-            </>
-          )}
+                  </GestureDetector>
+                )}
+              </>
+            )}
+          </View>
+        </Animated.View>
+      </View>
+
+      <View style={styles.bodySurface}>
+        <View style={styles.quickGrid}>
+          <QuickAction icon="clock-outline" label="Attendance" tone="primary" onPress={() => router.push('/attendance')} />
+          <QuickAction icon="timer-sand" label="Roster" tone="info" onPress={() => router.push('/roster')} />
+          <QuickAction icon="file-document-edit-outline" label="Leave" tone="warning" onPress={openLeaveSheet} />
+          <QuickAction icon="dots-horizontal-circle-outline" label="More" tone="success" onPress={openMoreSheet} />
         </View>
-      </View>
 
-      <View style={styles.quickGrid}>
-        <QuickAction icon="clock-outline" label="Attendance" tone="primary" onPress={() => router.push('/attendance')} />
-        <QuickAction icon="timer-sand" label="Roster" tone="info" onPress={() => router.push('/roster')} />
-        <QuickAction icon="file-document-edit-outline" label="Leave" tone="warning" onPress={openLeaveSheet} />
-        <QuickAction icon="dots-horizontal-circle-outline" label="More" tone="success" onPress={openMoreSheet} />
-      </View>
+        <View style={styles.homeSections}>
+          <HomeInfoCard title="Roster Schedule" actionMode="arrow" onPress={() => router.push('/roster')}>
+            <CurrentRosterDetails
+              cell={todayRosterCell}
+              isLoading={currentRosterQuery.isLoading}
+              isError={currentRosterQuery.isError}
+              calendarDay={todayCalendarDay}
+              isCoworkersLoading={rosterCalendarQuery.isLoading}
+            />
+          </HomeInfoCard>
 
-      <View style={styles.homeSections}>
-        <HomeInfoCard title="Roster Schedule" actionMode="arrow" onPress={() => router.push('/roster')}>
-          <CurrentRosterDetails
-            cell={todayRosterCell}
-            isLoading={currentRosterQuery.isLoading}
-            isError={currentRosterQuery.isError}
-            calendarDay={todayCalendarDay}
-            isCoworkersLoading={rosterCalendarQuery.isLoading}
-          />
-        </HomeInfoCard>
+          <HomeInfoCard title="Upcoming holidays" onPress={() => router.push('/holidays')}>
+            <HolidayList
+              holidays={holidaysQuery.data ?? []}
+              isLoading={holidaysQuery.isLoading}
+              isError={holidaysQuery.isError}
+            />
+          </HomeInfoCard>
 
-        <HomeInfoCard title="Upcoming holidays" onPress={() => router.push('/holidays')}>
-          <HolidayList
-            holidays={holidaysQuery.data ?? []}
-            isLoading={holidaysQuery.isLoading}
-            isError={holidaysQuery.isError}
-          />
-        </HomeInfoCard>
-
-        <HomeInfoCard title="Leave details" onPress={() => router.push('/leave/annual')}>
-          <LeaveDetails
-            dashboard={leaveDashboardQuery.data}
-            isLoading={leaveDashboardQuery.isLoading}
-            isError={leaveDashboardQuery.isError}
-          />
-        </HomeInfoCard>
-      </View>
-
-      {hasMissingPrerequisites && (
-        <View style={styles.onboardingCard}>
-          <StaffOnboardingChecklist checklist={staff.newStaffPrerequisiteCheck} />
+          <HomeInfoCard title="Leave details" onPress={() => router.push('/leave/annual')}>
+            <LeaveDetails
+              dashboard={leaveDashboardQuery.data}
+              isLoading={leaveDashboardQuery.isLoading}
+              isError={leaveDashboardQuery.isError}
+            />
+          </HomeInfoCard>
         </View>
-      )}
+
+        {hasMissingPrerequisites && (
+          <View style={styles.onboardingCard}>
+            <StaffOnboardingChecklist checklist={staff.newStaffPrerequisiteCheck} />
+          </View>
+        )}
+      </View>
 
       <AppSnackbar
         visible={attendanceToast.visible}
@@ -800,10 +876,26 @@ function useCurrentTime() {
 const styles = StyleSheet.create({
   content: {
     padding: 0,
+    paddingBottom: 0,
+  },
+  bodySurface: {
+    backgroundColor: Colors.light.appBgLight,
     paddingBottom: BottomTabInset + Spacing.four,
     gap: Spacing.four,
   },
+  heroShell: {
+    backgroundColor: Colors.light.appBgLight,
+  },
+  heroOverscrollBackdrop: {
+    position: 'absolute',
+    top: -320,
+    left: 0,
+    right: 0,
+    height: 320,
+    backgroundColor: Colors.light.primary,
+  },
   hero: {
+    zIndex: 1,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     backgroundColor: Colors.light.primary,
@@ -821,6 +913,23 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.four,
   },
+  heroAppBar: {
+    paddingHorizontal: 0,
+  },
+  stickyHomeAppBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    backgroundColor: Colors.light.primary,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.one,
+    paddingBottom: Spacing.two,
+  },
   avatar: {
     width: 52,
     height: 52,
@@ -829,6 +938,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
     backgroundColor: '#ffffff',
+  },
+  stickyAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
   },
   avatarImage: {
     width: '100%',
@@ -855,6 +969,15 @@ const styles = StyleSheet.create({
   },
   heroMeta: {
     ...Typography.sm,
+    color: 'rgba(255, 255, 255, 0.78)',
+  },
+  stickyHeroName: {
+    ...Typography.base,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  stickyHeroMeta: {
+    ...Typography.xs,
     color: 'rgba(255, 255, 255, 0.78)',
   },
   notificationButton: {
