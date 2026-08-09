@@ -5,9 +5,9 @@ This document is for bootstrapping the React Native + Expo staff mobile app.
 The system is split behind the gateway:
 
 ```txt
-Gateway:        https://hrm-gateway.fly.dev
-HRM service:    https://hrm-gateway.fly.dev/hrm
-Attendance:     https://hrm-gateway.fly.dev/attendance
+Gateway:        https://api.variablexsolutions.com
+HRM service:    https://api.variablexsolutions.com/hrm
+Attendance:     https://api.variablexsolutions.com/attendance
 ```
 
 All endpoint paths below are shown as gateway URLs.
@@ -38,7 +38,7 @@ Some attendance endpoints are currently anonymous in code, but the mobile app sh
 Starts staff login by validating staff id and password, then sends OTP to the staff email/phone.
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff/login
+POST https://api.variablexsolutions.com/hrm/api/staff/login
 ```
 
 Payload:
@@ -79,7 +79,7 @@ Possible error response:
 Confirms the OTP and returns the staff session.
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff/auth/verify-otp
+POST https://api.variablexsolutions.com/hrm/api/staff/auth/verify-otp
 ```
 
 Payload:
@@ -176,7 +176,7 @@ Store tokens in `expo-secure-store`.
 Rotates the refresh token and returns a fresh login response.
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff/auth/refresh-token
+POST https://api.variablexsolutions.com/hrm/api/staff/auth/refresh-token
 ```
 
 Payload:
@@ -221,7 +221,7 @@ Use this after app restart to hydrate the current staff profile.
 Also call this immediately after OTP confirmation so the mobile app can evaluate the staff prerequisite checklist.
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff/auth-staff
+GET https://api.variablexsolutions.com/hrm/api/staff/auth-staff
 ```
 
 Headers:
@@ -283,7 +283,7 @@ Success response shape:
 After staff OTP confirmation, the mobile app should call:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff/auth-staff
+GET https://api.variablexsolutions.com/hrm/api/staff/auth-staff
 ```
 
 Then inspect:
@@ -420,15 +420,15 @@ Mobile form states:
 To check submitted requests across all sections:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/submitted?pageNumber=1&pageSize=20
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/submitted?pageNumber=1&pageSize=20
 ```
 
 Useful filters:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/submitted?statuses=PENDING
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/submitted?requestType=bankUpdate
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/submitted?requestTypes=bankUpdate&requestTypes=professionalLicense
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/submitted?statuses=PENDING
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/submitted?requestType=bankUpdate
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/submitted?requestTypes=bankUpdate&requestTypes=professionalLicense
 ```
 
 Known prerequisite request types:
@@ -446,13 +446,13 @@ childrenDetails
 Fetch current or pending bank details:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/bank-update
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/bank-update
 ```
 
 Create a new bank update request:
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff-request/bank-update
+POST https://api.variablexsolutions.com/hrm/api/staff-request/bank-update
 ```
 
 Verified bank payload:
@@ -486,21 +486,21 @@ Manual HR setup bank payload:
 Update pending bank request:
 
 ```http
-PUT https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-bank-update
+PUT https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-bank-update
 ```
 
 Delete pending bank request:
 
 ```http
-DELETE https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-bank-update
+DELETE https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-bank-update
 ```
 
 Bank reference APIs:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/payments/banks
-GET https://hrm-gateway.fly.dev/hrm/api/payments/resolve-account?accountNumber=0123456789&code=044
-GET https://hrm-gateway.fly.dev/hrm/api/bank/all?pageNumber=1&pageSize=100&search=access
+GET https://api.variablexsolutions.com/hrm/api/payments/banks
+GET https://api.variablexsolutions.com/hrm/api/payments/resolve-account?accountNumber=0123456789&code=044
+GET https://api.variablexsolutions.com/hrm/api/bank/all?pageNumber=1&pageSize=100&search=access
 ```
 
 Bank reference response:
@@ -544,13 +544,13 @@ Branch is required in both modes.
 Fetch current or pending licence:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/professional-licence
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/professional-licence
 ```
 
 Create a new professional licence request:
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff-request/professional-licence
+POST https://api.variablexsolutions.com/hrm/api/staff-request/professional-licence
 ```
 
 Payload:
@@ -567,19 +567,19 @@ Payload:
 Update pending professional licence request:
 
 ```http
-PUT https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-professional-licence
+PUT https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-professional-licence
 ```
 
 Delete pending professional licence request:
 
 ```http
-DELETE https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-professional-licence
+DELETE https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-professional-licence
 ```
 
 Professional body reference API:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/professional-body/all?pageNumber=1&pageSize=100&search=nursing
+GET https://api.variablexsolutions.com/hrm/api/professional-body/all?pageNumber=1&pageSize=100&search=nursing
 ```
 
 ### Accommodation Details
@@ -587,13 +587,13 @@ GET https://hrm-gateway.fly.dev/hrm/api/professional-body/all?pageNumber=1&pageS
 Fetch current or pending accommodation:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/accommodation-detail
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/accommodation-detail
 ```
 
 Create a new accommodation request:
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff-request/accommodation
+POST https://api.variablexsolutions.com/hrm/api/staff-request/accommodation
 ```
 
 Payload:
@@ -611,13 +611,13 @@ Payload:
 Update pending accommodation request:
 
 ```http
-PUT https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-accommodation-detail
+PUT https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-accommodation-detail
 ```
 
 Delete pending accommodation request:
 
 ```http
-DELETE https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-accommodation-detail
+DELETE https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-accommodation-detail
 ```
 
 ### Family Details
@@ -625,13 +625,13 @@ DELETE https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-acco
 Fetch current or pending family details:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/family-details
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/family-details
 ```
 
 Create a new family details request:
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff-request/family-details
+POST https://api.variablexsolutions.com/hrm/api/staff-request/family-details
 ```
 
 Payload:
@@ -652,13 +652,13 @@ Payload:
 Update pending family request:
 
 ```http
-PUT https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-family-details
+PUT https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-family-details
 ```
 
 Delete pending family request:
 
 ```http
-DELETE https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-family-details
+DELETE https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-family-details
 ```
 
 ### Children Details
@@ -666,13 +666,13 @@ DELETE https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-fami
 Fetch current or pending children details:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/children-detail
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/children-detail
 ```
 
 Create a new children request:
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff-request/children-details
+POST https://api.variablexsolutions.com/hrm/api/staff-request/children-details
 ```
 
 Payload:
@@ -694,7 +694,7 @@ When there is a pending children request, use the pending request `id` from the 
 Add child to pending request:
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff-request/pending-children-detail/add-child/{childrenRequestId}
+POST https://api.variablexsolutions.com/hrm/api/staff-request/pending-children-detail/add-child/{childrenRequestId}
 ```
 
 Payload:
@@ -710,13 +710,13 @@ Payload:
 Update one child on pending request:
 
 ```http
-PUT https://hrm-gateway.fly.dev/hrm/api/staff-request/pending-children-detail/update-child/{childId}
+PUT https://api.variablexsolutions.com/hrm/api/staff-request/pending-children-detail/update-child/{childId}
 ```
 
 Delete one child from pending request:
 
 ```http
-DELETE https://hrm-gateway.fly.dev/hrm/api/staff-request/pending-children-detail/remove-child/{childId}
+DELETE https://api.variablexsolutions.com/hrm/api/staff-request/pending-children-detail/remove-child/{childId}
 ```
 
 There is no whole pending-children delete endpoint in the current code; only individual child add/update/remove exists for the pending children request.
@@ -738,7 +738,7 @@ There is no whole pending-children delete endpoint in the current code; only ind
 Raw profile data for full staff profile screens.
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff/MS987654321/profile
+GET https://api.variablexsolutions.com/hrm/api/staff/MS987654321/profile
 ```
 
 Response shape:
@@ -787,7 +787,7 @@ Response shape:
 For supporting documents.
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/uploads/miscellaneous
+POST https://api.variablexsolutions.com/hrm/api/uploads/miscellaneous
 ```
 
 Headers:
@@ -820,6 +820,425 @@ Uploaded files are stored under:
 /hrm/miscellaneous/{tenant-id}
 ```
 
+## Mobile Attendance Device Trust
+
+After OTP confirmation or refresh, validate the current phone before enabling mobile attendance.
+
+The mobile app must generate and persist:
+
+```txt
+deviceKeyId
+biometric-protected key pair in the device Keystore/Keychain
+```
+
+Recommended React Native package:
+
+```txt
+react-native-biometrics
+```
+
+Use `createKeys()` to generate the device key pair. It returns a base64 RSA public key that can be sent directly as `publicKey` when trusting/transferring a device.
+
+Use `createSignature()` to sign the exact `messageToSign` returned by the challenge endpoint. Send the returned base64 signature as `signature`.
+
+The backend accepts:
+
+```txt
+RSA 2048 public key + RSA PKCS#1 v1.5 SHA-256 signature
+ECDSA public key + SHA-256 ECDSA signature
+```
+
+Public keys may be PEM or base64 DER `SubjectPublicKeyInfo`.
+
+### Validate Current Phone
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/validate
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "phone-key-001"
+}
+```
+
+Response:
+
+```json
+{
+  "status": "SAME_DEVICE"
+}
+```
+
+Possible statuses:
+
+```txt
+NO_TRUSTED_DEVICE
+SAME_DEVICE
+DIFFERENT_DEVICE
+DEVICE_USED_BY_ANOTHER_STAFF
+```
+
+UX rules:
+
+- `NO_TRUSTED_DEVICE`: ask "Trust this device for attendance?"
+- `SAME_DEVICE`: enable attendance.
+- `DIFFERENT_DEVICE`: show transfer flow.
+- `DEVICE_USED_BY_ANOTHER_STAFF`: block attendance and instruct the staff to contact admin support.
+
+### Get Staff Trusted Device Summary
+
+Use this after login when the app needs to show the staff which attendance device is currently trusted and the last 5 devices used by that staff. This endpoint compares the staff's current phone `deviceKeyId` against the active trusted device and returns a status.
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/trusted-summary
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "current-phone-key-001"
+}
+```
+
+Response when the current phone is different from the active trusted phone:
+
+```json
+{
+  "status": "DIFFERENT_DEVICE",
+  "activeTrustedDevice": {
+    "id": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+    "maskedDeviceKeyId": "phon...0001",
+    "platform": "ios",
+    "deviceName": "iPhone 15",
+    "appVersion": "1.0.0",
+    "isActive": true,
+    "trustedAt": "2026-08-09T10:00:00Z",
+    "lastVerifiedAt": "2026-08-09T10:05:00Z",
+    "revokedAt": null,
+    "isCurrentDevice": false
+  },
+  "recentDevices": [
+    {
+      "id": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+      "maskedDeviceKeyId": "phon...0001",
+      "platform": "ios",
+      "deviceName": "iPhone 15",
+      "appVersion": "1.0.0",
+      "isActive": true,
+      "trustedAt": "2026-08-09T10:00:00Z",
+      "lastVerifiedAt": "2026-08-09T10:05:00Z",
+      "revokedAt": null,
+      "isCurrentDevice": false
+    }
+  ]
+}
+```
+
+Possible `status` values are the same as `/validate`:
+
+```txt
+NO_TRUSTED_DEVICE
+SAME_DEVICE
+DIFFERENT_DEVICE
+DEVICE_USED_BY_ANOTHER_STAFF
+```
+
+The response does not expose `publicKey` or the full `deviceKeyId`.
+
+### Create Challenge
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/challenge
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "phone-key-001",
+  "purpose": "TRUST"
+}
+```
+
+Supported purposes:
+
+```txt
+TRUST
+VALIDATE
+ATTENDANCE_LOG
+TRANSFER
+REMOVE
+```
+
+Response:
+
+```json
+{
+  "challengeId": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+  "nonce": "base64-nonce",
+  "purpose": "TRUST",
+  "expiresAt": "2026-08-07T08:00:00Z",
+  "messageToSign": "TRUST|tenant-id|MS987654321|phone-key-001|019d26a1-77be-78bd-86ba-d2216c5e652d|base64-nonce"
+}
+```
+
+Challenges expire after 5 minutes and are consumed after successful verification.
+
+### Trust First Phone
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/trust
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "phone-key-001",
+  "publicKey": "-----BEGIN PUBLIC KEY-----...",
+  "challengeId": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+  "signature": "base64-signature",
+  "metadata": {
+    "platform": "ios",
+    "deviceName": "iPhone 15",
+    "appVersion": "1.0.0"
+  }
+}
+```
+
+For `react-native-biometrics`, set `publicKey` to the value returned by `createKeys()` and set `signature` to the value returned by `createSignature({ payload: messageToSign })`.
+
+### Transfer Phone
+
+Use this only after validation returns `DIFFERENT_DEVICE`. Transfer is temporarily limited to once every 3 minutes for testing. This should return to 30 days after mobile testing is complete. If the user needs help before the cooldown expires, instruct them to contact HR support to reset the trusted attendance device.
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/transfer
+```
+
+Payload shape is the same as trust, but the challenge purpose must be `TRANSFER`.
+
+### Get Current Trusted Phone
+
+Use this when `/validate` returns `SAME_DEVICE` and the app needs to show the logged-in staff the phone currently trusted for attendance. This endpoint requires a signed `VALIDATE` challenge, so it only returns details to the same trusted phone.
+
+Flow:
+
+1. Call `/validate`.
+2. Continue only if the status is `SAME_DEVICE`.
+3. Create a challenge with purpose `VALIDATE`.
+4. Sign the returned `messageToSign` on the trusted phone.
+5. Call current trusted phone.
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/current
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "phone-key-001",
+  "challengeId": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+  "signature": "base64-signature"
+}
+```
+
+Response:
+
+```json
+{
+  "id": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "phone-key-001",
+  "platform": "ios",
+  "deviceName": "iPhone 15",
+  "appVersion": "1.0.0",
+  "trustedAt": "2026-08-09T10:00:00Z",
+  "lastVerifiedAt": "2026-08-09T10:05:00Z"
+}
+```
+
+### Remove Current Trusted Phone
+
+Use this only when the staff is on the same phone that is currently trusted. The phone must sign a `REMOVE` challenge, so another phone cannot remove the trusted device.
+
+Removal is temporarily limited to once every 3 minutes for testing. This should return to 30 days after mobile testing is complete. If the user needs help before the cooldown expires, instruct them to contact HR support to reset the trusted attendance device.
+
+Flow:
+
+1. Call `/validate`.
+2. Continue only if the status is `SAME_DEVICE`.
+3. Create a challenge with purpose `REMOVE`.
+4. Sign the returned `messageToSign` on the trusted phone.
+5. Call remove current trusted phone.
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/remove-current
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "phone-key-001",
+  "challengeId": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+  "signature": "base64-signature",
+  "reason": "User removed this phone"
+}
+```
+
+Response:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "phone-key-001",
+  "removed": true
+}
+```
+
+After removal, the next `/validate` call for that staff and phone should return `NO_TRUSTED_DEVICE`.
+
+### Lost Phone Recovery
+
+Use this when the staff cannot access the old trusted phone. This bypasses the 30-day transfer cooldown, but requires a fresh HRM OTP.
+
+Flow:
+
+1. Call normal staff login to send OTP:
+
+```http
+POST https://api.variablexsolutions.com/hrm/api/staff/login
+```
+
+2. Create a mobile attendance challenge with purpose `TRANSFER` for the new phone.
+3. Sign the returned `messageToSign` on the new phone.
+4. Call lost-phone recovery:
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/lost-phone/recover
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "otp": "1234",
+  "deviceKeyId": "new-phone-key-001",
+  "publicKey": "base64-public-key-from-createKeys",
+  "challengeId": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+  "signature": "base64-signature",
+  "metadata": {
+    "platform": "android",
+    "deviceName": "Pixel 9",
+    "appVersion": "1.0.0"
+  }
+}
+```
+
+Backend behavior:
+
+- Verifies and consumes the OTP through HRM.
+- Verifies the new phone signed the `TRANSFER` challenge.
+- Revokes the old trusted phone.
+- Trusts the new phone immediately.
+
+If the new phone already belongs to another staff account, recovery is blocked.
+
+### Admin / HR Support Device Reset
+
+Use this when HR/admin wants to clear a staff member's trusted phone so the next mobile login can trust a new device.
+
+Admin reset:
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/admin/reset
+```
+
+Admin remove trusted phone:
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/admin/remove
+```
+
+HR support reset:
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/support/reset
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "optional-specific-device-key-id",
+  "requestedBy": "admin@example.com",
+  "reason": "Lost phone"
+}
+```
+
+Response:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "revokedCount": 1,
+  "canTrustNewDevice": true
+}
+```
+
+If `deviceKeyId` is omitted, all active trusted devices for that staff are revoked. Normally there should only be one active device.
+
+### Remove Staff Linked Attendance Device
+
+Use this when an admin wants to remove the phone currently linked to a staff member's mobile attendance.
+
+```http
+POST https://api.variablexsolutions.com/attendance/api/mobile-attendance-device/admin/remove
+```
+
+Payload:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "requestedBy": "admin@example.com",
+  "reason": "Staff requested device removal"
+}
+```
+
+To remove a specific linked phone, include `deviceKeyId`:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "deviceKeyId": "phone-key-001",
+  "requestedBy": "admin@example.com",
+  "reason": "Staff changed phone"
+}
+```
+
+After a successful removal, the next `/validate` call for that staff should return:
+
+```txt
+NO_TRUSTED_DEVICE
+```
+
+Then the staff can trust a new phone through the normal `/challenge` + `/trust` flow.
+
 ## 7. Face Enrollment and Local Recognition
 
 The mobile device should perform face detection/recognition locally. The backend stores templates and attendance logs by `staffIdentificationNumber`.
@@ -834,7 +1253,7 @@ Recommended flow:
 ### Create Face Enrollment
 
 ```http
-POST https://hrm-gateway.fly.dev/attendance/api/face-enrollment
+POST https://api.variablexsolutions.com/attendance/api/face-enrollment
 ```
 
 Payload:
@@ -849,6 +1268,17 @@ Payload:
 }
 ```
 
+For mobile-owned enrollment, first create a `VALIDATE` challenge and include:
+
+```json
+{
+  "source": "MOBILE",
+  "deviceKeyId": "phone-key-001",
+  "challengeId": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+  "signature": "base64-signature"
+}
+```
+
 Success response:
 
 ```json
@@ -860,7 +1290,7 @@ The response is the enrollment id.
 ### Get Enrollment Status
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/face-enrollment/MS987654321
+GET https://api.variablexsolutions.com/attendance/api/face-enrollment/MS987654321
 ```
 
 Response:
@@ -882,13 +1312,13 @@ Response:
 Initial sync:
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/face-enrollments?pageNumber=1&pageSize=100
+GET https://api.variablexsolutions.com/attendance/api/face-enrollments?pageNumber=1&pageSize=100
 ```
 
 Delta sync:
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/face-enrollments?updatedSince=2026-07-22T10:00:00Z
+GET https://api.variablexsolutions.com/attendance/api/face-enrollments?updatedSince=2026-07-22T10:00:00Z
 ```
 
 Response:
@@ -923,7 +1353,7 @@ If `isDeleted` is true, remove the template locally.
 ### Update Enrollment
 
 ```http
-PUT https://hrm-gateway.fly.dev/attendance/api/face-enrollment/MS987654321
+PUT https://api.variablexsolutions.com/attendance/api/face-enrollment/MS987654321
 ```
 
 Payload:
@@ -937,6 +1367,8 @@ Payload:
 }
 ```
 
+For mobile-owned updates, include `source: "MOBILE"` plus a signed `VALIDATE` challenge.
+
 Success:
 
 ```http
@@ -946,7 +1378,7 @@ Success:
 ### Remove Enrollment
 
 ```http
-DELETE https://hrm-gateway.fly.dev/attendance/api/face-enrollment/MS987654321
+DELETE https://api.variablexsolutions.com/attendance/api/face-enrollment/MS987654321
 ```
 
 Success:
@@ -960,7 +1392,7 @@ Success:
 Use this before showing the clock-in/out button.
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/attendance/status/MS987654321
+GET https://api.variablexsolutions.com/attendance/api/attendance/status/MS987654321
 ```
 
 Response:
@@ -1026,7 +1458,7 @@ MISSED_CHECKOUT
 The API automatically decides whether the next punch is check-in or check-out.
 
 ```http
-POST https://hrm-gateway.fly.dev/attendance/api/attendance/log
+POST https://api.variablexsolutions.com/attendance/api/attendance/log
 ```
 
 Payload:
@@ -1035,6 +1467,21 @@ Payload:
 {
   "staffIdentificationNumber": "MS987654321",
   "deviceId": "device-001",
+  "forceCheckIn": false
+}
+```
+
+Kiosk requests may omit `source` or send `"source": "KIOSK"` and keep using `deviceId`.
+
+Mobile requests must first create an `ATTENDANCE_LOG` challenge and then send:
+
+```json
+{
+  "staffIdentificationNumber": "MS987654321",
+  "source": "MOBILE",
+  "deviceKeyId": "phone-key-001",
+  "challengeId": "019d26a1-77be-78bd-86ba-d2216c5e652d",
+  "signature": "base64-signature",
   "forceCheckIn": false
 }
 ```
@@ -1069,7 +1516,7 @@ Mobile clock flow:
 For staff history or admin-style list.
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/attendance/records?staffIdentificationNumber=MS987654321&fromDate=2026-07-01&toDate=2026-07-22&pageNumber=1&pageSize=20
+GET https://api.variablexsolutions.com/attendance/api/attendance/records?staffIdentificationNumber=MS987654321&fromDate=2026-07-01&toDate=2026-07-22&pageNumber=1&pageSize=20
 ```
 
 Query parameters:
@@ -1112,7 +1559,7 @@ Response shape:
 Best endpoint for the mobile calendar.
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/staff-attendance-calendar/MS987654321?fromDate=2026-07-01&toDate=2026-07-31
+GET https://api.variablexsolutions.com/attendance/api/staff-attendance-calendar/MS987654321?fromDate=2026-07-01&toDate=2026-07-31
 ```
 
 Response:
@@ -1167,19 +1614,19 @@ Use this for:
 Current roster:
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/staff-roster/MS987654321?filter=current
+GET https://api.variablexsolutions.com/attendance/api/staff-roster/MS987654321?filter=current
 ```
 
 Upcoming roster:
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/staff-roster/MS987654321?filter=upcoming
+GET https://api.variablexsolutions.com/attendance/api/staff-roster/MS987654321?filter=upcoming
 ```
 
 All rosters where staff appears:
 
 ```http
-GET https://hrm-gateway.fly.dev/attendance/api/staff-roster/MS987654321
+GET https://api.variablexsolutions.com/attendance/api/staff-roster/MS987654321
 ```
 
 Response:
@@ -1232,7 +1679,7 @@ STUDY_LEAVE
 ## 13. Leave Plan List
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/leave-plan/list?year=2026&pageNumber=1&pageSize=20
+GET https://api.variablexsolutions.com/hrm/api/staff-request/leave-plan/list?year=2026&pageNumber=1&pageSize=20
 ```
 
 Optional query parameters:
@@ -1287,7 +1734,7 @@ Response shape:
 ## 14. Create Annual Leave Plan
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff-request/leave-plan/create
+POST https://api.variablexsolutions.com/hrm/api/staff-request/leave-plan/create
 ```
 
 Payload:
@@ -1321,7 +1768,7 @@ Validation notes:
 ## 15. Leave Plan Calendar
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/leave-plan/auth-staff/leave-plan-calendar?year=2026
+GET https://api.variablexsolutions.com/hrm/api/staff-request/leave-plan/auth-staff/leave-plan-calendar?year=2026
 ```
 
 Response:
@@ -1341,7 +1788,7 @@ Response:
 ## 16. Create Leave Request
 
 ```http
-POST https://hrm-gateway.fly.dev/hrm/api/staff-request/leave
+POST https://api.variablexsolutions.com/hrm/api/staff-request/leave
 ```
 
 Payload:
@@ -1373,7 +1820,7 @@ Success response:
 ## 17. Leave Request History
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/leave?staffIdentificationNumber=MS987654321&year=2026&pageNumber=1&pageSize=20
+GET https://api.variablexsolutions.com/hrm/api/staff-request/leave?staffIdentificationNumber=MS987654321&year=2026&pageNumber=1&pageSize=20
 ```
 
 Query parameters:
@@ -1427,25 +1874,25 @@ Response shape:
 Pending leave request:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/pending-leave-request
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/pending-leave-request
 ```
 
 Active leave today:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/active-leave-data
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/active-leave-data
 ```
 
 Approved leave data:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/staff-request/auth-staff/approved-leave-data
+GET https://api.variablexsolutions.com/hrm/api/staff-request/auth-staff/approved-leave-data
 ```
 
 Leave dashboard:
 
 ```http
-GET https://hrm-gateway.fly.dev/hrm/api/leave/dashboard/my
+GET https://api.variablexsolutions.com/hrm/api/leave/dashboard/my
 ```
 
 ## 19. Recommended Mobile Startup Flow

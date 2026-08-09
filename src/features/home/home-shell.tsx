@@ -1,11 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BottomSheetModal } from '@gorhom/bottom-sheet';
-import { Camera } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Image, LayoutChangeEvent, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AppState, Image, LayoutChangeEvent, Pressable, StyleSheet, View, type AppStateStatus, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 import Animated, {
@@ -27,6 +25,7 @@ import Animated, {
 
 import { AppBottomSheet, AppSnackbar, Screen } from '@/components/ui';
 import { BottomTabInset, Colors, Spacing, Typography } from '@/constants/theme';
+import { AttendanceDeviceTrustModal } from '@/features/attendance/components/attendance-device-trust-modal';
 import { StaffOnboardingChecklist } from '@/features/staff-onboarding/components';
 import {
   getAttendanceStatus,
@@ -35,12 +34,28 @@ import {
   getStaffAttendanceCalendar,
   getStaffNotifications,
   getUpcomingHolidays,
+  validateMobileAttendanceDevice,
 } from '@/lib/auth/api';
 import { useSession } from '@/lib/auth/session-context';
 import { AuthStaff, StaffSession } from '@/lib/auth/types';
 import { useAuthenticatedRequest } from '@/lib/auth/use-authenticated-request';
-import { verifyAttendanceBiometricSession } from '@/lib/device/attendance-biometric-gate';
-import { useDeviceId } from '@/lib/hooks/use-device-id';
+import {
+  clearAttendanceBiometricSession,
+  markAttendanceBiometricVerified,
+  verifyAttendanceBiometricSession,
+} from '@/lib/device/attendance-biometric-gate';
+import {
+  AttendancePermissionState,
+  canUseAttendancePermissions,
+  getAttendancePermissionState,
+  openAttendancePermissionSettings,
+  requestAttendancePermissions,
+} from '@/lib/device/attendance-permissions';
+import {
+  getMobileAttendanceDeviceMetadata,
+  trustCurrentMobileAttendanceDevice,
+  useAttendanceDeviceKeyId,
+} from '@/lib/device/mobile-attendance-device';
 import {
   AttendanceActionLoading,
   CurrentRosterDetails,
@@ -61,6 +76,8 @@ import {
   getUpcomingHolidayRange,
   toSentenceCase,
 } from './home-formatters';
+
+const missedClockOutImage = require('@/assets/images/missed-clock-out.png');
 
 type HomeShellProps = {
   staff: AuthStaff | StaffSession;
@@ -85,9 +102,19 @@ function triggerErrorHaptic() {
 export function HomeShell({ staff, onSignOut }: HomeShellProps) {
   const { session } = useSession();
   const authenticatedRequest = useAuthenticatedRequest();
+  const queryClient = useQueryClient();
   const scrollY = useSharedValue(0);
   const leaveSheetRef = useRef<BottomSheetModal>(null);
   const moreSheetRef = useRef<BottomSheetModal>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const [deviceTrustModalVisible, setDeviceTrustModalVisible] = useState(false);
+  const [attendanceAccessStep, setAttendanceAccessStep] = useState<'permissions' | 'trust'>('trust');
+  const [attendancePermissionState, setAttendancePermissionState] = useState<AttendancePermissionState | undefined>();
+  const [isRequestingAttendancePermissions, setIsRequestingAttendancePermissions] = useState(false);
+  const [attendanceModalNotice, setAttendanceModalNotice] = useState<{
+    message: string;
+    tone?: 'danger' | 'info' | 'success';
+  } | null>(null);
   const [showHeaderAttendanceAction, setShowHeaderAttendanceAction] = useState(false);
   const [attendanceToast, setAttendanceToast] = useState<{
     visible: boolean;
@@ -101,6 +128,7 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
   const [attendanceCardWidth, setAttendanceCardWidth] = useState(0);
   const [slideClockState, setSlideClockState] = useState<SlideClockState>('idle');
   const staffName = formatStaffName(staff);
+  const attendanceDeviceName = getMobileAttendanceDeviceMetadata().deviceName ?? 'This phone';
   const initials = getInitials(staffName);
   const tenantName = toSentenceCase(staff.tenant?.name ?? 'VariableX HRM');
   const departmentUnit = formatDepartmentUnit(staff);
@@ -108,6 +136,28 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
   const currentTime = useCurrentTime();
   const holidayRange = getUpcomingHolidayRange();
   const todayParam = formatDateParam(new Date());
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const wasMinimized = appStateRef.current === 'background';
+      appStateRef.current = nextState;
+
+      if (!deviceTrustModalVisible || attendanceAccessStep !== 'permissions' || nextState !== 'active' || !wasMinimized) {
+        return;
+      }
+
+      getAttendancePermissionState()
+        .then((permissions) => {
+          setAttendancePermissionState(permissions);
+          if (canUseAttendancePermissions(permissions)) {
+            setAttendanceModalNotice(null);
+          }
+        })
+        .catch(() => undefined);
+    });
+
+    return () => subscription.remove();
+  }, [attendanceAccessStep, deviceTrustModalVisible]);
   const leaveYear = new Date().getFullYear();
   const holidaysQuery = useQuery({
     queryKey: ['upcoming-holidays', session?.tenantId, holidayRange.fromDate, holidayRange.toDate],
@@ -178,9 +228,69 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
   });
 
   // --- Attendance status (drives card state) ---
-  const deviceId = useDeviceId();
+  const deviceKeyId = useAttendanceDeviceKeyId();
   const attendanceStatusKey = ['attendance-status', session?.tenantId, staff.staffIdentificationNumber];
+  const deviceTrustKey = [
+    'mobile-attendance-device',
+    session?.tenantId,
+    staff.staffIdentificationNumber,
+    deviceKeyId,
+  ];
   const notificationsKey = ['staff-notifications', session?.tenantId];
+
+  const deviceTrustQuery = useQuery({
+    queryKey: deviceTrustKey,
+    queryFn: () =>
+      authenticatedRequest((activeSession) =>
+        validateMobileAttendanceDevice({
+          staffIdentificationNumber: staff.staffIdentificationNumber,
+          deviceKeyId: deviceKeyId ?? '',
+          accessToken: activeSession.accessToken,
+          tenantId: activeSession.tenantId,
+        })
+      ),
+    enabled: Boolean(session?.accessToken && session?.tenantId && staff.staffIdentificationNumber && deviceKeyId),
+    retry: false,
+  });
+
+  const trustDeviceMutation = useMutation({
+    mutationFn: (purpose: 'TRUST' | 'TRANSFER') =>
+      authenticatedRequest((activeSession) =>
+        trustCurrentMobileAttendanceDevice({
+          session: activeSession,
+          deviceKeyId: deviceKeyId ?? '',
+          purpose,
+        })
+      ),
+    onSuccess: async () => {
+      markAttendanceBiometricVerified();
+      await queryClient.invalidateQueries({ queryKey: ['mobile-attendance-device'] });
+      queryClient.setQueryData(deviceTrustKey, { status: 'SAME_DEVICE' });
+      setDeviceTrustModalVisible(false);
+      setAttendanceToast({
+        visible: true,
+        message: 'This phone is trusted for attendance.',
+        tone: 'success',
+      });
+      router.push('/scan');
+    },
+    onError: (error) => {
+      clearAttendanceBiometricSession();
+      if (deviceTrustModalVisible) {
+        setAttendanceModalNotice({
+          message: error instanceof Error ? error.message : 'Unable to trust this phone.',
+          tone: 'danger',
+        });
+        return;
+      }
+
+      setAttendanceToast({
+        visible: true,
+        message: error instanceof Error ? error.message : 'Unable to trust this phone.',
+        tone: 'danger',
+      });
+    },
+  });
 
   const attendanceStatusQuery = useQuery({
     queryKey: attendanceStatusKey,
@@ -228,7 +338,10 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
       ? formatPunchTime(lastCheckOut.timestamp)
       : '--:--';
   const isClockedIn = attendanceStatus?.currentStatus === 'CHECKIN';
+  const hasMissedCheckout = Boolean(attendanceStatus?.hasMissedCheckout);
   const showInitialLoading = attendanceStatusQuery.isLoading && !attendanceStatus;
+  const deviceTrustStatus = deviceTrustQuery.data?.status;
+  const isCheckingDeviceTrust = Boolean(deviceKeyId) && deviceTrustQuery.isLoading;
   const hasNoAttendanceStatusYet = !showInitialLoading && !attendanceStatus;
   const hasNeverClocked = attendanceStatus?.currentStatus === 'NEVER';
   const canClockIn =
@@ -265,7 +378,7 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
   };
 
   const prepareAttendanceScan = async () => {
-    if (!deviceId) {
+    if (!deviceKeyId) {
       triggerErrorHaptic();
       resetSlideClock();
       setAttendanceToast({
@@ -276,24 +389,36 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
       return;
     }
 
+    if (isCheckingDeviceTrust) {
+      triggerErrorHaptic();
+      resetSlideClock();
+      setAttendanceToast({
+        visible: true,
+        message: 'Checking whether this phone is trusted for attendance.',
+        tone: 'danger',
+      });
+      return;
+    }
+
+    const permissions = await getAttendancePermissionState();
+    setAttendancePermissionState(permissions);
+
+    if (!canUseAttendancePermissions(permissions)) {
+      triggerErrorHaptic();
+      resetSlideClock();
+      openDeviceTrustSheet('permissions');
+      return;
+    }
+
+    if (deviceTrustStatus !== 'SAME_DEVICE') {
+      triggerErrorHaptic();
+      resetSlideClock();
+      openDeviceTrustSheet('trust');
+      return;
+    }
+
     try {
       await verifyAttendanceBiometricSession();
-
-      const locationServicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!locationServicesEnabled) {
-        throw new Error('Turn on Location Services before clocking in or out.');
-      }
-
-      const locationPermission = await Location.requestForegroundPermissionsAsync();
-      if (!locationPermission.granted) {
-        throw new Error('Location permission is required before clocking in or out.');
-      }
-
-      const cameraPermission = await Camera.requestCameraPermissionsAsync();
-      if (!cameraPermission.granted) {
-        throw new Error('Camera permission is required to scan the attendance QR code.');
-      }
-
       router.push('/scan');
       setTimeout(() => {
         slideIsHeld.value = 0;
@@ -309,6 +434,94 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
         tone: 'danger',
       });
     }
+  };
+
+  const continueAfterAttendancePermissions = async () => {
+    const permissions = await getAttendancePermissionState();
+    setAttendancePermissionState(permissions);
+
+    if (!canUseAttendancePermissions(permissions)) {
+      triggerErrorHaptic();
+      setAttendanceModalNotice({
+        message: 'Camera and location are required for attendance.',
+        tone: 'danger',
+      });
+      return;
+    }
+
+    if (deviceTrustStatus !== 'SAME_DEVICE') {
+      setAttendanceModalNotice(null);
+      setAttendanceAccessStep('trust');
+      return;
+    }
+
+    setAttendanceModalNotice(null);
+    setDeviceTrustModalVisible(false);
+
+    try {
+      await verifyAttendanceBiometricSession();
+      router.push('/scan');
+    } catch (error) {
+      triggerErrorHaptic();
+      setAttendanceToast({
+        visible: true,
+        message: error instanceof Error ? error.message : 'Unable to start attendance verification.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  const handleAllowAttendancePermissions = async () => {
+    setIsRequestingAttendancePermissions(true);
+    setAttendanceModalNotice(null);
+
+    try {
+      const permissions = await requestAttendancePermissions();
+      setAttendancePermissionState(permissions);
+
+      if (canUseAttendancePermissions(permissions)) {
+        await continueAfterAttendancePermissions();
+        return;
+      }
+
+      triggerErrorHaptic();
+      setAttendanceModalNotice({
+        message: 'Camera and location are required for attendance.',
+        tone: 'danger',
+      });
+    } finally {
+      setIsRequestingAttendancePermissions(false);
+    }
+  };
+
+  const handleOpenAttendancePermissionSettings = async () => {
+    try {
+      setAttendanceModalNotice(null);
+      await openAttendancePermissionSettings();
+      const permissions = await getAttendancePermissionState();
+      setAttendancePermissionState(permissions);
+    } catch {
+      triggerErrorHaptic();
+      setAttendanceModalNotice({
+        message: 'Open Settings and allow camera, location, and biometrics for attendance.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  const openDeviceTrustSheet = (step: 'permissions' | 'trust' = 'trust') => {
+    if (!session || !deviceKeyId) {
+      setAttendanceToast({
+        visible: true,
+        message: 'This device is not ready for attendance verification. Please try again.',
+        tone: 'danger',
+      });
+      return;
+    }
+
+    setAttendanceAccessStep(step);
+    setAttendanceModalNotice(null);
+    setDeviceTrustModalVisible(true);
   };
 
   useEffect(() => {
@@ -337,7 +550,7 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
   };
 
   const slideActionGesture = Gesture.Pan()
-    .enabled(Boolean(activeClockAction && slideClockState === 'idle' && deviceId && slideActionMaxTranslate > 0))
+    .enabled(Boolean(activeClockAction && slideClockState === 'idle' && deviceKeyId && slideActionMaxTranslate > 0))
     .onBegin(() => {
       slideIsHeld.value = 1;
       runOnJS(triggerSelectionHaptic)();
@@ -488,7 +701,7 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
             </Animated.View>
           </View>
           <Pressable
-            disabled={headerAttendanceAction && (slideClockState === 'loading' || !deviceId)}
+            disabled={headerAttendanceAction && (slideClockState === 'loading' || !deviceKeyId)}
             style={[
               styles.notificationButton,
             ]}
@@ -547,40 +760,34 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
 
               <View style={styles.attendanceDivider} />
 
-              <View style={styles.timeGrid}>
-                <View style={styles.timeTile}>
-                  <Text style={styles.timeLabel}>
-                    {clockInTime === '--:--' ? 'Clock in' : 'Last clocked in'}
-                  </Text>
-                  <Text style={styles.timeValue}>{clockInTime}</Text>
-                  <Text style={clockInTime === '--:--' ? styles.timePending : styles.timeSuccess}>
-                    {clockInTime === '--:--' ? 'Not yet' : getPunchEvalLabel(lastCheckIn?.evaluation) || 'On time'}
-                  </Text>
+              {hasMissedCheckout ? (
+                <View style={styles.missedClockOutPanel}>
+                  <Image source={missedClockOutImage} style={styles.missedClockOutImage} />
+                  <Text style={styles.missedClockOutText}>You failed to clock out.</Text>
                 </View>
+              ) : (
+                <View style={styles.timeGrid}>
+                  <View style={styles.timeTile}>
+                    <Text style={styles.timeLabel}>
+                      {clockInTime === '--:--' ? 'Clock in' : 'Last clocked in'}
+                    </Text>
+                    <Text style={styles.timeValue}>{clockInTime}</Text>
+                    <Text style={clockInTime === '--:--' ? styles.timePending : styles.timeSuccess}>
+                      {clockInTime === '--:--' ? 'Not yet' : getPunchEvalLabel(lastCheckIn?.evaluation) || 'On time'}
+                    </Text>
+                  </View>
 
-                <View style={[styles.timeTile, attendanceStatus?.hasMissedCheckout && styles.timeTileDanger]}>
-                  <Text style={[styles.timeLabel, attendanceStatus?.hasMissedCheckout && styles.timeLabelDanger]}>
-                    {attendanceStatus?.hasMissedCheckout
-                      ? 'Missed clock out'
-                      : clockOutTime === '--:--'
-                        ? 'Clock out'
-                        : 'Last clocked out'}
-                  </Text>
-                  {attendanceStatus?.hasMissedCheckout ? (
-                    <View style={styles.missedClockOutValue}>
-                      <Icon source="alert-circle-outline" size={18} color="#ffffff" />
-                      <Text style={[styles.timeValue, styles.timeValueDanger]}>Missed</Text>
-                    </View>
-                  ) : (
-                    <>
-                      <Text style={styles.timeValue}>{clockOutTime}</Text>
-                      <Text style={clockOutTime === '--:--' ? styles.timePending : styles.timeSuccess}>
-                        {clockOutTime === '--:--' ? 'Not yet' : attendanceStatus?.todaysTotalWorkedTime || 'Done'}
-                      </Text>
-                    </>
-                  )}
+                  <View style={styles.timeTile}>
+                    <Text style={styles.timeLabel}>
+                      {clockOutTime === '--:--' ? 'Clock out' : 'Last clocked out'}
+                    </Text>
+                    <Text style={styles.timeValue}>{clockOutTime}</Text>
+                    <Text style={clockOutTime === '--:--' ? styles.timePending : styles.timeSuccess}>
+                      {clockOutTime === '--:--' ? 'Not yet' : attendanceStatus?.todaysTotalWorkedTime || 'Done'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              )}
 
               {activeClockAction && (
                 <GestureDetector gesture={slideActionGesture}>
@@ -681,6 +888,30 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
         tone={attendanceToast.tone}
         position="top"
         onDismiss={() => setAttendanceToast((current) => ({ ...current, visible: false }))}
+      />
+      <AttendanceDeviceTrustModal
+        visible={deviceTrustModalVisible}
+        step={attendanceAccessStep}
+        status={deviceTrustStatus}
+        staffName={staffName}
+        deviceName={attendanceDeviceName}
+        permissionState={attendancePermissionState}
+        isChecking={isCheckingDeviceTrust}
+        isSubmitting={trustDeviceMutation.isPending}
+        isRetrying={deviceTrustQuery.isFetching}
+        isError={deviceTrustQuery.isError}
+        notice={attendanceModalNotice}
+        isRequestingPermissions={isRequestingAttendancePermissions}
+        onAllowPermissions={handleAllowAttendancePermissions}
+        onOpenPermissionSettings={handleOpenAttendancePermissionSettings}
+        onPermissionContinue={continueAfterAttendancePermissions}
+        onTrust={() => trustDeviceMutation.mutate('TRUST')}
+        onTransfer={() => trustDeviceMutation.mutate('TRANSFER')}
+        onRetry={() => deviceTrustQuery.refetch()}
+        onCancel={() => {
+          setAttendanceModalNotice(null);
+          setDeviceTrustModalVisible(false);
+        }}
       />
       <AppBottomSheet
         ref={leaveSheetRef}
@@ -958,6 +1189,23 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     position: 'relative',
   },
+  missedClockOutPanel: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingTop: Spacing.one,
+    paddingBottom: Spacing.two,
+  },
+  missedClockOutImage: {
+    width: '100%',
+    height: 96,
+    resizeMode: 'cover',
+  },
+  missedClockOutText: {
+    ...Typography.sm,
+    color: Colors.light.danger,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   timeTile: {
     flex: 1,
     borderRadius: 16,
@@ -966,29 +1214,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     minHeight: 86,
   },
-  timeTileDanger: {
-    backgroundColor: Colors.light.danger,
-  },
   timeLabel: {
     ...Typography.xs,
     color: Colors.light.textSecondary,
-  },
-  timeLabelDanger: {
-    color: 'rgba(255, 255, 255, 0.78)',
   },
   timeValue: {
     ...Typography.base,
     color: Colors.light.text,
     fontWeight: '600',
-  },
-  timeValueDanger: {
-    color: '#ffffff',
-  },
-  missedClockOutValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.one,
-    marginTop: Spacing.one,
   },
   timeSuccess: {
     ...Typography.xs,

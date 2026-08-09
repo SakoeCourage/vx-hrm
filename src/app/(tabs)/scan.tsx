@@ -1,6 +1,6 @@
 import { useIsFocused } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView } from 'expo-camera';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -9,15 +9,34 @@ import { ActivityIndicator, Icon, Text } from 'react-native-paper';
 
 import { AppButton, Screen } from '@/components/ui';
 import { Colors, Spacing, Typography } from '@/constants/theme';
-import { getAttendanceStatus, logAttendance } from '@/lib/auth/api';
+import { AttendanceDeviceTrustModal } from '@/features/attendance/components/attendance-device-trust-modal';
+import {
+  getAttendanceStatus,
+  logAttendance,
+  validateMobileAttendanceDevice,
+} from '@/lib/auth/api';
 import { useSession } from '@/lib/auth/session-context';
 import { useAuthenticatedRequest } from '@/lib/auth/use-authenticated-request';
 import {
   cancelAttendanceBiometricVerification,
+  clearAttendanceBiometricSession,
   hasValidAttendanceBiometricSession,
+  markAttendanceBiometricVerified,
   verifyAttendanceBiometricSession,
 } from '@/lib/device/attendance-biometric-gate';
-import { useDeviceId } from '@/lib/hooks/use-device-id';
+import {
+  AttendancePermissionState,
+  canUseAttendancePermissions,
+  getAttendancePermissionState,
+  openAttendancePermissionSettings,
+  requestAttendancePermissions,
+} from '@/lib/device/attendance-permissions';
+import {
+  getMobileAttendanceDeviceMetadata,
+  signMobileAttendanceChallenge,
+  trustCurrentMobileAttendanceDevice,
+  useAttendanceDeviceKeyId,
+} from '@/lib/device/mobile-attendance-device';
 
 const DEFAULT_QR_RADIUS_METERS = 100;
 const MAX_CACHED_LOCATION_AGE_MS = 2 * 60 * 1000;
@@ -35,6 +54,24 @@ type DeviceLocation = {
   longitude: number;
   timestamp: number;
 };
+
+function getDeviceTrustBlockMessage(status: string) {
+  switch (status) {
+    case 'NO_TRUSTED_DEVICE':
+      return 'Trust this phone from Home before clocking in or out.';
+    case 'DIFFERENT_DEVICE':
+      return 'Attendance is linked to another phone. Transfer it from Home before clocking in or out.';
+    case 'DEVICE_USED_BY_ANOTHER_STAFF':
+      return 'This phone is already linked to another staff account. Contact admin support.';
+    default:
+      return 'This phone must be trusted before attendance can be logged.';
+  }
+}
+
+function formatSessionStaffName(session: { firstName?: string; lastName?: string; otherNames?: string; staffIdentificationNumber?: string } | null) {
+  const name = [session?.firstName, session?.otherNames, session?.lastName].filter(Boolean).join(' ').trim();
+  return name || session?.staffIdentificationNumber || 'Staff';
+}
 
 function parseAttendanceQrPayload(data: string): AttendanceQrTarget | null {
   const trimmed = data.trim();
@@ -168,12 +205,11 @@ function ScanToast({
 export default function ScanTab() {
   const { session } = useSession();
   const authenticatedRequest = useAuthenticatedRequest();
-  const deviceId = useDeviceId();
+  const deviceKeyId = useAttendanceDeviceKeyId();
   const queryClient = useQueryClient();
 
   // Set default scanning mode to true so it opens camera instantly
   const [isScanning, setIsScanning] = useState(true);
-  const [permission, requestPermission] = useCameraPermissions();
 
   // Geolocation States
   const [locationName, setLocationName] = useState<string>('Locating...');
@@ -185,6 +221,14 @@ export default function ScanTab() {
   const [isBiometricVerified, setIsBiometricVerified] = useState(() => hasValidAttendanceBiometricSession());
   const [isVerifyingBiometric, setIsVerifyingBiometric] = useState(false);
   const [biometricAttemptVersion, setBiometricAttemptVersion] = useState(0);
+  const [deviceTrustModalVisible, setDeviceTrustModalVisible] = useState(false);
+  const [attendanceAccessStep, setAttendanceAccessStep] = useState<'permissions' | 'trust'>('trust');
+  const [attendancePermissionState, setAttendancePermissionState] = useState<AttendancePermissionState | undefined>();
+  const [isRequestingAttendancePermissions, setIsRequestingAttendancePermissions] = useState(false);
+  const [attendanceModalNotice, setAttendanceModalNotice] = useState<{
+    message: string;
+    tone?: 'danger' | 'info' | 'success';
+  } | null>(null);
 
   // Toast message states
   const [snackbarVisible, setSnackbarVisible] = useState(false);
@@ -197,6 +241,8 @@ export default function ScanTab() {
   const staffId = session?.staffIdentificationNumber ?? '';
   const tenantId = session?.tenantId ?? '';
   const accessToken = session?.accessToken ?? '';
+  const staffName = formatSessionStaffName(session);
+  const attendanceDeviceName = getMobileAttendanceDeviceMetadata().deviceName ?? 'This phone';
 
   // Get current status to see if forceCheckIn is needed
   const statusQuery = useQuery({
@@ -212,19 +258,105 @@ export default function ScanTab() {
     enabled: Boolean(accessToken && tenantId && staffId),
   });
 
+  const deviceTrustQuery = useQuery({
+    queryKey: ['mobile-attendance-device', tenantId, staffId, deviceKeyId],
+    queryFn: () =>
+      authenticatedRequest((activeSession) =>
+        validateMobileAttendanceDevice({
+          staffIdentificationNumber: staffId,
+          deviceKeyId: deviceKeyId ?? '',
+          accessToken: activeSession.accessToken,
+          tenantId: activeSession.tenantId,
+        })
+      ),
+    enabled: Boolean(accessToken && tenantId && staffId && deviceKeyId),
+    retry: false,
+  });
+
+  const trustDeviceMutation = useMutation({
+    mutationFn: (purpose: 'TRUST' | 'TRANSFER') =>
+      authenticatedRequest((activeSession) =>
+        trustCurrentMobileAttendanceDevice({
+          session: activeSession,
+          deviceKeyId: deviceKeyId ?? '',
+          purpose,
+        })
+      ),
+    onSuccess: async () => {
+      markAttendanceBiometricVerified();
+      await queryClient.invalidateQueries({ queryKey: ['mobile-attendance-device'] });
+      queryClient.setQueryData(['mobile-attendance-device', tenantId, staffId, deviceKeyId], {
+        status: 'SAME_DEVICE',
+      });
+      setDeviceTrustModalVisible(false);
+      scanLockRef.current = false;
+      lastScanRef.current = null;
+      setScanOverlay(null);
+      setIsScanning(true);
+      setIsBiometricVerified(hasValidAttendanceBiometricSession());
+      setIsVerifyingBiometric(false);
+      setBiometricAttemptVersion((current) => current + 1);
+      setSnackbarTone('success');
+      setSnackbarMessage('This phone is trusted for attendance.');
+      setSnackbarVisible(true);
+    },
+    onError: (error) => {
+      clearAttendanceBiometricSession();
+      setIsBiometricVerified(false);
+      setIsVerifyingBiometric(false);
+      if (deviceTrustModalVisible) {
+        setAttendanceModalNotice({
+          message: error instanceof Error ? error.message : 'Unable to trust this phone.',
+          tone: 'danger',
+        });
+        return;
+      }
+
+      setSnackbarTone('danger');
+      setSnackbarMessage(error instanceof Error ? error.message : 'Unable to trust this phone.');
+      setSnackbarVisible(true);
+    },
+  });
+
   const logMutation = useMutation({
     mutationFn: (forceCheckIn: boolean) =>
-      authenticatedRequest((activeSession) =>
-        logAttendance({
+      authenticatedRequest(async (activeSession) => {
+        if (!deviceKeyId) {
+          throw new Error('This device is not ready for attendance verification. Please try again.');
+        }
+
+        const deviceTrust = deviceTrustQuery.data?.status
+          ? deviceTrustQuery.data
+          : await validateMobileAttendanceDevice({
+              staffIdentificationNumber: staffId,
+              deviceKeyId,
+              accessToken: activeSession.accessToken,
+              tenantId: activeSession.tenantId,
+            });
+
+        if (deviceTrust.status !== 'SAME_DEVICE') {
+          throw new Error(getDeviceTrustBlockMessage(deviceTrust.status));
+        }
+
+        const signedChallenge = await signMobileAttendanceChallenge({
+          session: activeSession,
+          deviceKeyId,
+          purpose: 'ATTENDANCE_LOG',
+        });
+
+        return logAttendance({
           accessToken: activeSession.accessToken,
           tenantId: activeSession.tenantId,
           payload: {
             staffIdentificationNumber: staffId,
-            deviceId: deviceId ?? 'mobile-app',
+            source: 'MOBILE',
+            deviceKeyId,
+            challengeId: signedChallenge.challengeId,
+            signature: signedChallenge.signature,
             forceCheckIn,
           },
-        })
-      ),
+        });
+      }),
     retry: false,
     onSuccess: () => {
       setScanOverlay('success');
@@ -252,10 +384,16 @@ export default function ScanTab() {
     },
   });
   const attendanceActionText = statusQuery.data?.currentStatus === 'CHECKIN' ? 'Signing out from' : 'Signing in from';
+  const deviceTrustStatus = deviceTrustQuery.data?.status;
+  const canUseTrustedDevice = deviceTrustStatus === 'SAME_DEVICE';
+  const canUseAttendanceAccess = attendancePermissionState
+    ? canUseAttendancePermissions(attendancePermissionState)
+    : false;
   const isFocused = useIsFocused();
   const focusResetCountRef = useRef(0);
   const deviceLocationRef = useRef<DeviceLocation | null>(null);
   const biometricAttemptRef = useRef<number | null>(null);
+  const biometricAttemptSequenceRef = useRef(0);
   const biometricVerificationInFlightRef = useRef(false);
   const scanLockRef = useRef(false);
   const lastScanRef = useRef<{ data: string; timestamp: number } | null>(null);
@@ -266,6 +404,48 @@ export default function ScanTab() {
   }, [deviceLocation]);
 
   useEffect(() => {
+    if (!isFocused) {
+      return;
+    }
+
+    let isMounted = true;
+
+    getAttendancePermissionState().then((permissions) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setAttendancePermissionState(permissions);
+
+      if (!canUseAttendancePermissions(permissions)) {
+        scanLockRef.current = true;
+        setIsScanning(false);
+        setScanOverlay(null);
+        setAttendanceAccessStep('permissions');
+        setAttendanceModalNotice(null);
+        setDeviceTrustModalVisible(true);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isFocused]);
+
+  useEffect(() => {
+    if (!isFocused || deviceTrustModalVisible || !canUseAttendanceAccess || !deviceTrustStatus || canUseTrustedDevice) {
+      return;
+    }
+
+    scanLockRef.current = true;
+    setIsScanning(false);
+    setScanOverlay(null);
+    setAttendanceAccessStep('trust');
+    setAttendanceModalNotice(null);
+    setDeviceTrustModalVisible(true);
+  }, [canUseAttendanceAccess, canUseTrustedDevice, deviceTrustModalVisible, deviceTrustStatus, isFocused]);
+
+  useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       const wasMinimized = appStateRef.current === 'background';
       appStateRef.current = nextState;
@@ -274,8 +454,24 @@ export default function ScanTab() {
         return;
       }
 
+      if (deviceTrustModalVisible && attendanceAccessStep === 'permissions') {
+        getAttendancePermissionState()
+          .then((permissions) => {
+            setAttendancePermissionState(permissions);
+            if (canUseAttendancePermissions(permissions)) {
+              setAttendanceModalNotice(null);
+            }
+          })
+          .catch(() => undefined);
+        return;
+      }
+
       const hasActiveBiometricSession = hasValidAttendanceBiometricSession();
       if (hasActiveBiometricSession) {
+        return;
+      }
+
+      if (!canUseTrustedDevice || !canUseAttendanceAccess) {
         return;
       }
 
@@ -297,17 +493,21 @@ export default function ScanTab() {
     });
 
     return () => subscription.remove();
-  }, [isFocused]);
+  }, [attendanceAccessStep, canUseAttendanceAccess, canUseTrustedDevice, deviceTrustModalVisible, isFocused]);
 
   useEffect(() => {
     if (!isFocused) {
+      biometricAttemptSequenceRef.current += 1;
+      biometricVerificationInFlightRef.current = false;
+      setIsVerifyingBiometric(false);
+      void cancelAttendanceBiometricVerification();
       return;
     }
 
     focusResetCountRef.current += 1;
 
     if (focusResetCountRef.current > 1) {
-      const hasActiveBiometricSession = hasValidAttendanceBiometricSession();
+      const hasActiveBiometricSession = canUseAttendanceAccess && canUseTrustedDevice && hasValidAttendanceBiometricSession();
 
       setIsScanning(true);
       setScanOverlay(null);
@@ -322,16 +522,18 @@ export default function ScanTab() {
       setIsResolvingLocation(false);
       setIsBiometricVerified(hasActiveBiometricSession);
       setIsVerifyingBiometric(false);
-      if (!hasActiveBiometricSession) {
+      if (canUseAttendanceAccess && canUseTrustedDevice && !hasActiveBiometricSession) {
         setBiometricAttemptVersion((current) => current + 1);
       }
       setLocationCheckVersion((current) => current + 1);
     }
-  }, [isFocused]);
+  }, [canUseAttendanceAccess, canUseTrustedDevice, isFocused]);
 
   useEffect(() => {
     if (
       !isFocused ||
+      !canUseAttendanceAccess ||
+      !canUseTrustedDevice ||
       isBiometricVerified ||
       biometricVerificationInFlightRef.current ||
       biometricAttemptRef.current === biometricAttemptVersion
@@ -339,7 +541,8 @@ export default function ScanTab() {
       return;
     }
 
-    let isMounted = true;
+    const attemptSequence = biometricAttemptSequenceRef.current + 1;
+    biometricAttemptSequenceRef.current = attemptSequence;
     biometricAttemptRef.current = biometricAttemptVersion;
     biometricVerificationInFlightRef.current = true;
 
@@ -348,37 +551,25 @@ export default function ScanTab() {
 
       try {
         await verifyAttendanceBiometricSession();
-        if (isMounted) {
+        if (biometricAttemptSequenceRef.current === attemptSequence) {
           setIsBiometricVerified(true);
           setSnackbarVisible(false);
         }
       } catch (error) {
-        if (isMounted) {
+        if (biometricAttemptSequenceRef.current === attemptSequence) {
           setIsBiometricVerified(false);
           setSnackbarTone('danger');
           setSnackbarMessage(error instanceof Error ? error.message : 'Biometric verification is required before scanning.');
           setSnackbarVisible(true);
         }
       } finally {
-        biometricVerificationInFlightRef.current = false;
-        if (isMounted) {
+        if (biometricAttemptSequenceRef.current === attemptSequence) {
+          biometricVerificationInFlightRef.current = false;
           setIsVerifyingBiometric(false);
         }
       }
     })();
-
-    return () => {
-      isMounted = false;
-      void cancelAttendanceBiometricVerification();
-    };
-  }, [biometricAttemptVersion, isBiometricVerified, isFocused]);
-
-  // Auto-request permissions on mount if not determined or granted
-  useEffect(() => {
-    if (isBiometricVerified && permission && !permission.granted && permission.canAskAgain) {
-      requestPermission();
-    }
-  }, [isBiometricVerified, permission, requestPermission]);
+  }, [biometricAttemptVersion, canUseAttendanceAccess, canUseTrustedDevice, isBiometricVerified, isFocused]);
 
   // Resolve location after identity is verified. Camera stays visible while this runs.
   useEffect(() => {
@@ -463,7 +654,7 @@ export default function ScanTab() {
   useEffect(() => {
     let animLoop: Animated.CompositeAnimation | null = null;
 
-    if (isScanning && permission?.granted && isBiometricVerified) {
+    if (isScanning && canUseAttendanceAccess && isBiometricVerified) {
       scanAnim.setValue(10);
       animLoop = Animated.loop(
         Animated.sequence([
@@ -489,7 +680,7 @@ export default function ScanTab() {
         animLoop.stop();
       }
     };
-  }, [isBiometricVerified, isScanning, permission, scanAnim]);
+  }, [canUseAttendanceAccess, isBiometricVerified, isScanning, scanAnim]);
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (!isScanning || scanOverlay || logMutation.isPending || scanLockRef.current) return;
@@ -505,6 +696,15 @@ export default function ScanTab() {
     }
 
     lastScanRef.current = { data, timestamp: now };
+
+    const deviceTrustStatus = deviceTrustQuery.data?.status;
+    if (deviceTrustQuery.isError || (deviceTrustStatus && deviceTrustStatus !== 'SAME_DEVICE')) {
+      scanLockRef.current = true;
+      setIsScanning(false);
+      setDeviceTrustModalVisible(true);
+      setScanOverlay(null);
+      return;
+    }
 
     const target = parseAttendanceQrPayload(data);
     if (!target) {
@@ -523,6 +723,16 @@ export default function ScanTab() {
     setScanOverlay('loading');
 
     try {
+      if (!deviceKeyId) {
+        throw new Error('This device is not ready for attendance verification. Please try again.');
+      }
+
+      const latestDeviceTrustStatus = deviceTrustQuery.data?.status;
+      if (latestDeviceTrustStatus && latestDeviceTrustStatus !== 'SAME_DEVICE') {
+        setDeviceTrustModalVisible(true);
+        throw new Error(getDeviceTrustBlockMessage(latestDeviceTrustStatus));
+      }
+
       const servicesEnabled = await Location.hasServicesEnabledAsync();
       if (!servicesEnabled) {
         throw new Error('Turn on Location Services before clocking in or out.');
@@ -575,16 +785,83 @@ export default function ScanTab() {
     }
   };
 
-  const handleGrantPermission = async () => {
-    const res = await requestPermission();
-    if (!res.granted) {
-      setSnackbarTone('danger');
-      setSnackbarMessage('Camera permission is required to scan QR codes.');
-      setSnackbarVisible(true);
+  const continueAfterAttendancePermissions = async () => {
+    const permissions = await getAttendancePermissionState();
+    setAttendancePermissionState(permissions);
+
+    if (!canUseAttendancePermissions(permissions)) {
+      setAttendanceModalNotice({
+        message: 'Camera and location are required for attendance.',
+        tone: 'danger',
+      });
+      return;
+    }
+
+    if (deviceTrustQuery.data?.status !== 'SAME_DEVICE') {
+      setAttendanceModalNotice(null);
+      setAttendanceAccessStep('trust');
+      return;
+    }
+
+    setAttendanceModalNotice(null);
+    setDeviceTrustModalVisible(false);
+    scanLockRef.current = false;
+    lastScanRef.current = null;
+    setScanOverlay(null);
+    setIsScanning(true);
+    setIsBiometricVerified(hasValidAttendanceBiometricSession());
+    setIsVerifyingBiometric(false);
+    setBiometricAttemptVersion((current) => current + 1);
+  };
+
+  const handleAllowAttendancePermissions = async () => {
+    setIsRequestingAttendancePermissions(true);
+    setAttendanceModalNotice(null);
+
+    try {
+      const permissions = await requestAttendancePermissions();
+      setAttendancePermissionState(permissions);
+
+      if (canUseAttendancePermissions(permissions)) {
+        await continueAfterAttendancePermissions();
+        return;
+      }
+
+      setAttendanceModalNotice({
+        message: 'Camera and location are required for attendance.',
+        tone: 'danger',
+      });
+    } finally {
+      setIsRequestingAttendancePermissions(false);
     }
   };
 
-  if (!isBiometricVerified) {
+  const handleOpenAttendancePermissionSettings = async () => {
+    try {
+      setAttendanceModalNotice(null);
+      await openAttendancePermissionSettings();
+      const permissions = await getAttendancePermissionState();
+      setAttendancePermissionState(permissions);
+    } catch {
+      setAttendanceModalNotice({
+        message: 'Open Settings and allow camera, location, and biometrics for attendance.',
+        tone: 'danger',
+      });
+    }
+  };
+
+  if (deviceTrustQuery.isLoading && !deviceTrustModalVisible) {
+    return (
+      <Screen backgroundColor={Colors.light.appBgLight} statusBarBackgroundColor={Colors.light.primary} statusBarStyle="light">
+        <View style={styles.canvas}>
+          <ActivityIndicator color={Colors.light.primary} />
+          <Text style={styles.subtitle}>Checking attendance device</Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (canUseAttendanceAccess && canUseTrustedDevice && !isBiometricVerified) {
     return (
       <View style={styles.cameraContainer}>
         <View style={styles.biometricOverlay}>
@@ -623,33 +900,9 @@ export default function ScanTab() {
     );
   }
 
-  // Render Case 1: Permission not granted or not loaded yet
-  if (!permission || !permission.granted) {
-    return (
-      <Screen backgroundColor={Colors.light.appBgLight} statusBarBackgroundColor={Colors.light.primary} statusBarStyle="light">
-        <View style={styles.canvas}>
-          <View style={styles.iconWrap}>
-            <Icon source="camera-off" size={42} color={Colors.light.danger} />
-          </View>
-          <Text style={styles.title}>Camera Access Required</Text>
-          <Text style={styles.subtitle}>We need access to your camera to scan verification QR codes.</Text>
-          <AppButton icon="camera-outline" onPress={handleGrantPermission}>
-            Allow Camera Access
-          </AppButton>
-        </View>
-        <ScanToast
-          visible={snackbarVisible}
-          message={snackbarMessage}
-          tone={snackbarTone}
-          onDismiss={() => setSnackbarVisible(false)}
-        />
-      </Screen>
-    );
-  }
-
   return (
     <View style={styles.cameraContainer}>
-      {isFocused && isBiometricVerified && (
+      {isFocused && canUseAttendanceAccess && canUseTrustedDevice && isBiometricVerified && (
         <CameraView
           style={StyleSheet.absoluteFillObject}
           facing="back"
@@ -685,7 +938,7 @@ export default function ScanTab() {
             <View style={[styles.corner, styles.bottomRightCorner]} />
 
             {/* Animated Laser Line */}
-            {isScanning && isBiometricVerified && (
+            {isScanning && canUseTrustedDevice && isBiometricVerified && (
               <Animated.View
                 style={[
                   styles.laserLine,
@@ -713,7 +966,7 @@ export default function ScanTab() {
         </View>
       )}
 
-      {!isBiometricVerified && !scanOverlay && (
+      {canUseAttendanceAccess && canUseTrustedDevice && !isBiometricVerified && !scanOverlay && (
         <View style={styles.biometricOverlay}>
           <View style={styles.overlayStatusBubble}>
             {isVerifyingBiometric ? (
@@ -766,6 +1019,32 @@ export default function ScanTab() {
         tone={snackbarTone}
         onDismiss={() => setSnackbarVisible(false)}
       />
+      <AttendanceDeviceTrustModal
+        visible={deviceTrustModalVisible}
+        step={attendanceAccessStep}
+        status={deviceTrustQuery.data?.status}
+        staffName={staffName}
+        deviceName={attendanceDeviceName}
+        permissionState={attendancePermissionState}
+        isChecking={deviceTrustQuery.isLoading}
+        isSubmitting={trustDeviceMutation.isPending}
+        isRetrying={deviceTrustQuery.isFetching}
+        isError={deviceTrustQuery.isError}
+        notice={attendanceModalNotice}
+        isRequestingPermissions={isRequestingAttendancePermissions}
+        onAllowPermissions={handleAllowAttendancePermissions}
+        onOpenPermissionSettings={handleOpenAttendancePermissionSettings}
+        onPermissionContinue={continueAfterAttendancePermissions}
+        onTrust={() => trustDeviceMutation.mutate('TRUST')}
+        onTransfer={() => trustDeviceMutation.mutate('TRANSFER')}
+        onRetry={() => deviceTrustQuery.refetch()}
+        onCancel={() => {
+          setAttendanceModalNotice(null);
+          setDeviceTrustModalVisible(false);
+          scanLockRef.current = false;
+          router.replace('/home');
+        }}
+      />
     </View>
   );
 }
@@ -800,7 +1079,6 @@ const styles = StyleSheet.create({
     maxWidth: 280,
     marginBottom: Spacing.two,
   },
-
   // Camera view layout styles
   cameraContainer: {
     flex: 1,

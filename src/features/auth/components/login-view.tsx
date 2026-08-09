@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import {
+  Image,
   Keyboard,
   Linking,
   Pressable,
@@ -22,7 +23,8 @@ import { useMutation } from '@tanstack/react-query';
 import { AppButton, AppSnackbar, FormTextField } from '@/components/ui';
 import { Colors, Spacing, Typography } from '@/constants/theme';
 import { staffLogin, verifyStaffOtp } from '@/lib/auth/api';
-import { StaffSession } from '@/lib/auth/types';
+import { getRememberedStaffProfile } from '@/lib/auth/session-store';
+import { AuthStaff, StaffSession } from '@/lib/auth/types';
 
 type LoginForm = {
   staffIdentificationNumber: string;
@@ -42,6 +44,8 @@ type LoginViewProps = {
 
 export function LoginView({ onAuthenticated }: LoginViewProps) {
   const [authPanelStep, setAuthPanelStep] = useState<AuthPanelStep>('credentials');
+  const [rememberedStaff, setRememberedStaff] = useState<AuthStaff | null>(null);
+  const [isUsingRememberedStaff, setIsUsingRememberedStaff] = useState(false);
   const [pendingStaffId, setPendingStaffId] = useState('');
   const [otpSubtitle, setOtpSubtitle] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -64,6 +68,28 @@ export function LoginView({ onAuthenticated }: LoginViewProps) {
     },
   });
   const otpValue = otpForm.watch('otp');
+  const rememberedStaffName = rememberedStaff ? formatStaffName(rememberedStaff) : '';
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getRememberedStaffProfile()
+      .then((profile) => {
+        if (!isMounted || !profile?.staffIdentificationNumber) {
+          return;
+        }
+
+        setRememberedStaff(profile);
+        setIsUsingRememberedStaff(true);
+        loginForm.setValue('staffIdentificationNumber', profile.staffIdentificationNumber);
+        loginForm.setValue('agreeToTerms', true);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loginForm]);
 
   const loginMutation = useMutation({
     mutationFn: staffLogin,
@@ -137,6 +163,74 @@ export function LoginView({ onAuthenticated }: LoginViewProps) {
     : resendCooldown > 0
       ? `Resend in ${resendCooldown}s`
       : 'Resend code';
+
+  const handleRememberedStaffLogin = (values: LoginForm) => {
+    if (!rememberedStaff?.staffIdentificationNumber) {
+      return;
+    }
+
+    loginMutation.mutate({
+      staffIdentificationNumber: rememberedStaff.staffIdentificationNumber,
+      password: values.password,
+    });
+  };
+
+  const handleUseDifferentStaff = () => {
+    setIsUsingRememberedStaff(false);
+    setAuthPanelStep('credentials');
+    setPendingStaffId('');
+    setOtpSubtitle('');
+    lastSubmittedOtpRef.current = '';
+    otpForm.reset({ otp: '' });
+    loginForm.reset({
+      staffIdentificationNumber: '',
+      password: '',
+      agreeToTerms: false,
+    });
+  };
+
+  const rememberedCredentialsContent = rememberedStaff ? (
+    <>
+      <View style={styles.rememberedStaffCard}>
+        {rememberedStaff.passportPicture ? (
+          <Image source={{ uri: rememberedStaff.passportPicture }} style={styles.rememberedAvatar} />
+        ) : (
+          <View style={styles.rememberedAvatarFallback}>
+            <Text style={styles.rememberedAvatarText}>{getStaffInitials(rememberedStaff)}</Text>
+          </View>
+        )}
+        <View style={styles.rememberedStaffText}>
+          <Text style={styles.rememberedStaffName}>{rememberedStaffName}</Text>
+          <Text style={styles.rememberedStaffId}>
+            {rememberedStaff.staffIdentificationNumber}
+          </Text>
+        </View>
+      </View>
+      <FormTextField
+        control={loginForm.control}
+        name="password"
+        label="Password *"
+        placeholder="Enter password"
+        autoFocus
+        secureTextEntry
+        canToggleSecureText
+        rules={{ required: 'Password is required.' }}
+      />
+      <AppButton
+        loading={loginMutation.isPending}
+        disabled={loginMutation.isPending}
+        onPress={loginForm.handleSubmit(handleRememberedStaffLogin)}>
+        Send OTP
+      </AppButton>
+      <Pressable
+        style={styles.differentStaffButton}
+        disabled={loginMutation.isPending}
+        onPress={handleUseDifferentStaff}>
+        <Text style={styles.differentStaffText}>Sign in with a different staff ID</Text>
+      </Pressable>
+      <StepIndicator activeStep={authPanelStep} />
+    </>
+  ) : null;
 
   const credentialsContent = (
     <>
@@ -237,11 +331,21 @@ export function LoginView({ onAuthenticated }: LoginViewProps) {
       subtitle={
         authPanelStep === 'otp'
           ? otpSubtitle
-          : 'Securely log in with your staff credentials.'
+          : isUsingRememberedStaff && rememberedStaff
+            ? 'Enter your password to continue.'
+            : 'Securely log in with your staff credentials.'
       }
-      panelTitle={authPanelStep === 'otp' ? 'Enter code' : 'Sign in'}
+      panelTitle={
+        authPanelStep === 'otp'
+          ? 'Enter code'
+          : isUsingRememberedStaff && rememberedStaff
+            ? 'Sign in as'
+            : 'Sign in'
+      }
       activeStep={authPanelStep}
-      credentialsContent={credentialsContent}
+      credentialsContent={
+        isUsingRememberedStaff && rememberedStaff ? rememberedCredentialsContent : credentialsContent
+      }
       otpContent={otpContent}
       panelAction={
         authPanelStep === 'otp' ? (
@@ -350,6 +454,17 @@ function AuthShell({
 
 function openVariableX() {
   Linking.openURL('https://variablexsolutions.com/');
+}
+
+function formatStaffName(staff: AuthStaff) {
+  return [staff.firstName, staff.otherNames, staff.lastName].filter(Boolean).join(' ') || 'Staff member';
+}
+
+function getStaffInitials(staff: AuthStaff) {
+  const nameParts = [staff.firstName, staff.lastName].filter(Boolean);
+  const initials = nameParts.map((part) => part?.[0]).join('').slice(0, 2).toUpperCase();
+
+  return initials || staff.staffIdentificationNumber.slice(0, 2).toUpperCase();
 }
 
 function StepIndicator({ activeStep }: { activeStep: AuthPanelStep }) {
@@ -593,6 +708,59 @@ const styles = StyleSheet.create({
   otpBoxFilled: {
     borderColor: Colors.light.primary,
     backgroundColor: Colors.light.primaryMuted,
+  },
+  rememberedStaffCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 12,
+    backgroundColor: Colors.light.surface,
+    padding: Spacing.three,
+  },
+  rememberedAvatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: Colors.light.primaryMuted,
+  },
+  rememberedAvatarFallback: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.light.primaryMuted,
+  },
+  rememberedAvatarText: {
+    ...Typography.lg,
+    color: Colors.light.primary,
+    fontWeight: '800',
+  },
+  rememberedStaffText: {
+    flex: 1,
+    gap: 2,
+  },
+  rememberedStaffName: {
+    ...Typography.md,
+    color: Colors.light.text,
+    fontWeight: '800',
+  },
+  rememberedStaffId: {
+    ...Typography.sm,
+    color: Colors.light.textSecondary,
+    fontWeight: '600',
+  },
+  differentStaffButton: {
+    alignItems: 'center',
+    paddingVertical: Spacing.one,
+  },
+  differentStaffText: {
+    ...Typography.sm,
+    color: Colors.light.primary,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   termsRow: {
     flexDirection: 'row',

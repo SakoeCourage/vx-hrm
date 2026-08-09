@@ -156,7 +156,11 @@ export type AttendanceStatus = {
 
 export type AttendanceLogPayload = {
   staffIdentificationNumber: string;
-  deviceId: string;
+  deviceId?: string;
+  source?: 'KIOSK' | 'MOBILE';
+  deviceKeyId?: string;
+  challengeId?: string;
+  signature?: string;
   forceCheckIn?: boolean;
 };
 
@@ -459,6 +463,84 @@ export type StaffProfileResponse = {
   generatedAt?: string | null;
 };
 
+export type MobileAttendanceDeviceTrustStatus =
+  | 'NO_TRUSTED_DEVICE'
+  | 'SAME_DEVICE'
+  | 'DIFFERENT_DEVICE'
+  | 'DEVICE_USED_BY_ANOTHER_STAFF';
+
+export type MobileAttendanceDeviceChallengePurpose =
+  | 'TRUST'
+  | 'VALIDATE'
+  | 'ATTENDANCE_LOG'
+  | 'TRANSFER'
+  | 'REMOVE';
+
+export type MobileAttendanceDeviceMetadata = {
+  platform: string;
+  deviceName?: string;
+  appVersion?: string;
+};
+
+export type MobileAttendanceDeviceChallenge = {
+  challengeId: string;
+  nonce: string;
+  purpose: MobileAttendanceDeviceChallengePurpose;
+  expiresAt: string;
+  messageToSign: string;
+};
+
+export type MobileAttendanceDeviceTrustPayload = {
+  staffIdentificationNumber: string;
+  deviceKeyId: string;
+  publicKey: string;
+  challengeId: string;
+  signature: string;
+  metadata: MobileAttendanceDeviceMetadata;
+};
+
+export type MobileAttendanceDeviceRemoveCurrentPayload = {
+  staffIdentificationNumber: string;
+  deviceKeyId: string;
+  challengeId: string;
+  signature: string;
+  reason: string;
+};
+
+export type MobileAttendanceDeviceRemoveCurrentResponse = {
+  staffIdentificationNumber: string;
+  deviceKeyId: string;
+  removed: boolean;
+};
+
+export type MobileAttendanceTrustedDevice = {
+  id: string;
+  staffIdentificationNumber: string;
+  deviceKeyId?: string;
+  maskedDeviceKeyId?: string;
+  platform: string;
+  deviceName: string;
+  appVersion?: string | null;
+  isActive?: boolean;
+  trustedAt: string;
+  lastVerifiedAt?: string | null;
+  revokedAt?: string | null;
+  isCurrentDevice?: boolean;
+};
+
+export type MobileAttendanceTrustedDeviceSummary = {
+  status: MobileAttendanceDeviceTrustStatus;
+  activeTrustedDevice: MobileAttendanceTrustedDevice | null;
+  recentDevices: MobileAttendanceTrustedDevice[];
+};
+
+export type MobileAttendanceDeviceCurrentPayload = {
+  staffIdentificationNumber: string;
+  deviceKeyId: string;
+  challengeId: string;
+  signature: string;
+};
+
 export function staffLogin(payload: StaffLoginPayload) {
   return apiRequest<StaffLoginResponse>('/hrm/api/staff/login', {
     method: 'POST',
@@ -576,6 +658,148 @@ export function getAttendanceStatus({
     `/attendance/api/attendance/status/${encodeURIComponent(staffIdentificationNumber)}`,
     {
       method: 'GET',
+      accessToken,
+      tenantId,
+    }
+  );
+}
+
+export function validateMobileAttendanceDevice({
+  staffIdentificationNumber,
+  deviceKeyId,
+  accessToken,
+  tenantId,
+}: {
+  staffIdentificationNumber: string;
+  deviceKeyId: string;
+  accessToken: string;
+  tenantId: string;
+}) {
+  return apiRequest<{ status: MobileAttendanceDeviceTrustStatus }>(
+    '/attendance/api/mobile-attendance-device/validate',
+    {
+      method: 'POST',
+      body: JSON.stringify({ staffIdentificationNumber, deviceKeyId }),
+      accessToken,
+      tenantId,
+    }
+  );
+}
+
+export function getMobileAttendanceTrustedDeviceSummary({
+  staffIdentificationNumber,
+  deviceKeyId,
+  accessToken,
+  tenantId,
+}: {
+  staffIdentificationNumber: string;
+  deviceKeyId: string;
+  accessToken: string;
+  tenantId: string;
+}) {
+  return apiRequest<MobileAttendanceTrustedDeviceSummary>(
+    '/attendance/api/mobile-attendance-device/trusted-summary',
+    {
+      method: 'POST',
+      body: JSON.stringify({ staffIdentificationNumber, deviceKeyId }),
+      accessToken,
+      tenantId,
+    }
+  );
+}
+
+export function createMobileAttendanceDeviceChallenge({
+  staffIdentificationNumber,
+  deviceKeyId,
+  purpose,
+  accessToken,
+  tenantId,
+}: {
+  staffIdentificationNumber: string;
+  deviceKeyId: string;
+  purpose: MobileAttendanceDeviceChallengePurpose;
+  accessToken: string;
+  tenantId: string;
+}) {
+  return apiRequest<MobileAttendanceDeviceChallenge>(
+    '/attendance/api/mobile-attendance-device/challenge',
+    {
+      method: 'POST',
+      body: JSON.stringify({ staffIdentificationNumber, deviceKeyId, purpose }),
+      accessToken,
+      tenantId,
+    }
+  );
+}
+
+export function trustMobileAttendanceDevice({
+  accessToken,
+  tenantId,
+  payload,
+}: {
+  accessToken: string;
+  tenantId: string;
+  payload: MobileAttendanceDeviceTrustPayload;
+}) {
+  return apiRequest<unknown>('/attendance/api/mobile-attendance-device/trust', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    accessToken,
+    tenantId,
+  });
+}
+
+export function transferMobileAttendanceDevice({
+  accessToken,
+  tenantId,
+  payload,
+}: {
+  accessToken: string;
+  tenantId: string;
+  payload: MobileAttendanceDeviceTrustPayload;
+}) {
+  return apiRequest<unknown>('/attendance/api/mobile-attendance-device/transfer', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    accessToken,
+    tenantId,
+  });
+}
+
+export function removeCurrentMobileAttendanceDevice({
+  accessToken,
+  tenantId,
+  payload,
+}: {
+  accessToken: string;
+  tenantId: string;
+  payload: MobileAttendanceDeviceRemoveCurrentPayload;
+}) {
+  return apiRequest<MobileAttendanceDeviceRemoveCurrentResponse>(
+    '/attendance/api/mobile-attendance-device/remove-current',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      accessToken,
+      tenantId,
+    }
+  );
+}
+
+export function getCurrentMobileAttendanceTrustedDevice({
+  accessToken,
+  tenantId,
+  payload,
+}: {
+  accessToken: string;
+  tenantId: string;
+  payload: MobileAttendanceDeviceCurrentPayload;
+}) {
+  return apiRequest<MobileAttendanceTrustedDevice>(
+    '/attendance/api/mobile-attendance-device/current',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
       accessToken,
       tenantId,
     }

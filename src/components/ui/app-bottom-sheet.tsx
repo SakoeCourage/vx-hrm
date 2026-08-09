@@ -6,7 +6,7 @@ import {
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { forwardRef, PropsWithChildren, useCallback, useMemo } from 'react';
-import { StyleSheet, View, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import { Colors, Spacing, Typography } from '@/constants/theme';
@@ -16,8 +16,11 @@ type AppBottomSheetProps = PropsWithChildren<{
   title?: string;
   subtitle?: string;
   contentStyle?: ViewStyle;
+  backgroundStyle?: StyleProp<ViewStyle>;
   onDismiss?: () => void;
   scrollable?: boolean;
+  showHandle?: boolean;
+  enableDynamicSizing?: boolean;
 }>;
 
 export const AppBottomSheet = forwardRef<BottomSheetModal, AppBottomSheetProps>(
@@ -28,8 +31,11 @@ export const AppBottomSheet = forwardRef<BottomSheetModal, AppBottomSheetProps>(
       title,
       subtitle,
       contentStyle,
+      backgroundStyle,
       onDismiss,
       scrollable,
+      showHandle = true,
+      enableDynamicSizing,
     },
     ref
   ) => {
@@ -52,8 +58,10 @@ export const AppBottomSheet = forwardRef<BottomSheetModal, AppBottomSheetProps>(
         ref={ref}
         snapPoints={sheetSnapPoints}
         backdropComponent={renderBackdrop}
-        backgroundStyle={styles.background}
+        backgroundStyle={[styles.background, backgroundStyle]}
+        handleComponent={showHandle ? undefined : null}
         handleIndicatorStyle={styles.handle}
+        enableDynamicSizing={enableDynamicSizing}
         onDismiss={onDismiss}>
         {scrollable ? (
           <BottomSheetScrollView contentContainerStyle={[styles.content, contentStyle]}>

@@ -1,4 +1,4 @@
-export const GATEWAY_URL = 'https://hrm-gateway.fly.dev';
+export const GATEWAY_URL = 'https://api.variablexsolutions.com';
 
 type RequestOptions = RequestInit & {
   accessToken?: string;

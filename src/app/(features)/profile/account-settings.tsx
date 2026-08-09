@@ -5,7 +5,7 @@ import { Icon, Switch, Text } from 'react-native-paper';
 import { Screen } from '@/components/ui';
 import { BottomTabInset, Colors, Spacing, Typography } from '@/constants/theme';
 
-const settings = [
+const notificationSettings = [
   {
     icon: 'bell-ring-outline',
     title: 'Push notifications',
@@ -30,6 +30,18 @@ const settings = [
     description: 'Remind you to clock in or out when you are near a duty point.',
     value: false,
   },
+] as const;
+
+const securitySettings = [
+  {
+    icon: 'cellphone-key',
+    title: 'Trusted devices',
+    description: 'Manage the phone allowed to verify attendance.',
+    route: '/profile/trusted-devices',
+  },
+] as const;
+
+const appearanceSettings = [
   {
     icon: 'theme-light-dark',
     title: 'Dark mode',
@@ -64,25 +76,108 @@ export default function AccountSettingsScreen() {
         </View>
       </View>
 
-      <View style={styles.settingsCard}>
-        {settings.map((setting, index) => (
-          <View key={setting.title} style={[styles.settingRow, index > 0 && styles.settingRowBorder]}>
-            <View style={styles.settingIcon}>
-              <Icon source={setting.icon} size={20} color={Colors.light.primary} />
-            </View>
-            <View style={styles.settingText}>
-              <Text style={styles.settingTitle}>{setting.title}</Text>
-              <Text style={styles.settingDescription}>{setting.description}</Text>
-            </View>
-            <Switch
-              value={setting.value}
-              disabled
-              color={Colors.light.primary}
-            />
-          </View>
+      <SettingsSection title="Attendance">
+        {securitySettings.map((setting, index) => (
+          <NavigationSettingRow
+            key={setting.title}
+            icon={setting.icon}
+            title={setting.title}
+            description={setting.description}
+            hasBorder={index > 0}
+            onPress={() => router.push(setting.route)}
+          />
         ))}
-      </View>
+      </SettingsSection>
+
+      <SettingsSection title="Notifications">
+        {notificationSettings.map((setting, index) => (
+          <SwitchSettingRow
+            key={setting.title}
+            icon={setting.icon}
+            title={setting.title}
+            description={setting.description}
+            value={setting.value}
+            hasBorder={index > 0}
+          />
+        ))}
+      </SettingsSection>
+
+      <SettingsSection title="Appearance">
+        {appearanceSettings.map((setting, index) => (
+          <SwitchSettingRow
+            key={setting.title}
+            icon={setting.icon}
+            title={setting.title}
+            description={setting.description}
+            value={setting.value}
+            hasBorder={index > 0}
+          />
+        ))}
+      </SettingsSection>
     </Screen>
+  );
+}
+
+function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.settingsCard}>{children}</View>
+    </View>
+  );
+}
+
+function SwitchSettingRow({
+  icon,
+  title,
+  description,
+  value,
+  hasBorder,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  value: boolean;
+  hasBorder?: boolean;
+}) {
+  return (
+    <View style={[styles.settingRow, hasBorder && styles.settingRowBorder]}>
+      <View style={styles.settingIcon}>
+        <Icon source={icon} size={20} color={Colors.light.primary} />
+      </View>
+      <View style={styles.settingText}>
+        <Text style={styles.settingTitle}>{title}</Text>
+        <Text style={styles.settingDescription}>{description}</Text>
+      </View>
+      <Switch value={value} disabled color={Colors.light.primary} />
+    </View>
+  );
+}
+
+function NavigationSettingRow({
+  icon,
+  title,
+  description,
+  hasBorder,
+  onPress,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  hasBorder?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={[styles.settingRow, hasBorder && styles.settingRowBorder]} onPress={onPress}>
+      <View style={styles.settingIcon}>
+        <Icon source={icon} size={20} color={Colors.light.primary} />
+      </View>
+      <View style={styles.settingText}>
+        <Text style={styles.settingTitle}>{title}</Text>
+        <Text style={styles.settingDescription}>{description}</Text>
+      </View>
+      <Icon source="chevron-right" size={22} color={Colors.light.textSecondary} />
+    </Pressable>
   );
 }
 
@@ -151,6 +246,16 @@ const styles = StyleSheet.create({
     ...Typography.sm,
     color: Colors.light.textSecondary,
     marginTop: Spacing.one,
+  },
+  section: {
+    gap: Spacing.two,
+  },
+  sectionTitle: {
+    ...Typography.sm,
+    color: Colors.light.textSecondary,
+    fontWeight: '700',
+    paddingHorizontal: Spacing.one,
+    textTransform: 'uppercase',
   },
   settingsCard: {
     borderRadius: 22,
