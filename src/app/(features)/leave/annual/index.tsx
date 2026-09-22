@@ -1,7 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Icon, Text } from 'react-native-paper';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import PagerView from 'react-native-pager-view';
+import Animated, {
+  Extrapolation,
+  FadeIn,
+  FadeOut,
+  interpolate,
+  type SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { AppButton, Screen } from '@/components/ui';
 import { BottomTabInset, Colors, Spacing, Typography } from '@/constants/theme';
@@ -17,11 +30,20 @@ import {
 import { useSession } from '@/lib/auth/session-context';
 import { useAuthenticatedRequest } from '@/lib/auth/use-authenticated-request';
 
+const leavePlanStepImages = [
+  require('@/assets/images/leave-plan-step-0.png'),
+  require('@/assets/images/leave-plan-step-1.png'),
+  require('@/assets/images/leave-plan-step-2.png'),
+  require('@/assets/images/leave-plan-step-3.png'),
+];
+const AnimatedPagerView = Animated.createAnimatedComponent(PagerView);
+
 export default function AnnualLeaveScreen() {
   const { session } = useSession();
   const authenticatedRequest = useAuthenticatedRequest();
   const leaveYear = new Date().getFullYear();
   const staffIdentificationNumber = session?.staffIdentificationNumber ?? '';
+  const [introStepIndex, setIntroStepIndex] = useState(0);
 
   const dashboardQuery = useQuery({
     queryKey: ['my-leave-dashboard', session?.tenantId, leaveYear],
@@ -83,6 +105,24 @@ export default function AnnualLeaveScreen() {
   const pendingRequest = (requestsQuery.data?.data ?? []).find((request) => request.status?.toUpperCase() === 'PENDING');
   const isLoading = dashboardQuery.isLoading || leaveTypesQuery.isLoading || plansQuery.isLoading;
   const isError = dashboardQuery.isError || leaveTypesQuery.isError || plansQuery.isError;
+  const introSteps = useMemo(
+    () =>
+      getLeavePlanIntroSteps({
+        entitledDays: readNumber(dashboardPlan?.totalEntitledDays ?? dashboardPlan?.TotalEntitledDays ?? dashboardQuery.data?.entitledDays ?? dashboardQuery.data?.EntitledDays),
+        leaveYear,
+      }),
+    [dashboardPlan, dashboardQuery.data?.EntitledDays, dashboardQuery.data?.entitledDays, leaveYear]
+  );
+  const showPlanIntro = !latestPlan;
+
+  const handleIntroAction = () => {
+    if (introStepIndex < introSteps.length - 1) {
+      setIntroStepIndex((current) => current + 1);
+      return;
+    }
+
+    router.push('/leave/annual/create-plan');
+  };
 
   return (
     <Screen
@@ -100,10 +140,18 @@ export default function AnnualLeaveScreen() {
       statusBarBackgroundColor={Colors.light.primary}
       statusBarStyle="light">
       {isLoading ? (
-        <StateCard icon="calendar-sync-outline" title="Loading annual leave" description="Checking your plan and balance." loading />
+        <AnnualLeaveLoading />
       ) : isError ? (
         <StateCard icon="alert-circle-outline" title="Could not load leave" description="Please try again shortly." />
       ) : (
+        showPlanIntro ? (
+          <LeavePlanIntro
+            steps={introSteps}
+            activeIndex={introStepIndex}
+            onStepChange={setIntroStepIndex}
+            onNext={handleIntroAction}
+          />
+        ) : (
         <>
           <View style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
@@ -163,9 +211,208 @@ export default function AnnualLeaveScreen() {
             {!approvedPlan && <Text style={styles.actionHint}>An approved annual leave plan is required before submitting a request.</Text>}
           </View>
         </>
+        )
       )}
     </Screen>
   );
+}
+
+function AnnualLeaveLoading() {
+  return (
+    <View style={styles.loadingState}>
+      <ActivityIndicator size={28} color={Colors.light.primary} />
+      <Text style={styles.loadingText}>Checking leave info</Text>
+    </View>
+  );
+}
+
+type LeavePlanIntroStep = {
+  title: {
+    main: string;
+    accent: string;
+  };
+  message: string;
+  image: number;
+};
+
+function LeavePlanIntro({
+  activeIndex,
+  onNext,
+  onStepChange,
+  steps,
+}: {
+  activeIndex: number;
+  onNext: () => void;
+  onStepChange: (index: number) => void;
+  steps: LeavePlanIntroStep[];
+}) {
+  const pagerRef = useRef<PagerView>(null);
+  const isLastStep = activeIndex === steps.length - 1;
+  const handleNextPress = () => {
+    if (isLastStep) {
+      onNext();
+      return;
+    }
+
+    pagerRef.current?.setPage(activeIndex + 1);
+    onStepChange(activeIndex + 1);
+  };
+
+  return (
+    <LinearGradient
+      colors={['#ffffff', '#f5fcfd', Colors.light.primaryMuted]}
+      locations={[0, 0.52, 1]}
+      style={styles.introFlow}>
+      <AnimatedPagerView
+        ref={pagerRef}
+        style={styles.introPager}
+        initialPage={activeIndex}
+        onPageSelected={(event) => {
+          onStepChange(event.nativeEvent.position);
+        }}>
+        {steps.map((step, index) => (
+          <View key={`${step.title.main}-${step.title.accent}`} collapsable={false} style={styles.introPage}>
+            <Animated.View
+              entering={FadeIn.duration(220).withInitialValues({ opacity: 0, transform: [{ translateY: 12 }] })}
+              exiting={FadeOut.duration(120)}
+              style={styles.introImageWrap}>
+              <Image source={step.image} style={styles.introImage} />
+            </Animated.View>
+
+            <Animated.View
+              entering={FadeIn.duration(220).delay(40).withInitialValues({ opacity: 0, transform: [{ translateY: 8 }] })}
+              exiting={FadeOut.duration(120)}
+              style={styles.introCopy}>
+              <Text style={styles.introTitle}>
+                {step.title.main}
+                <Text style={styles.introTitleAccent}>{step.title.accent}</Text>
+              </Text>
+              <Text style={styles.introMessage}>{step.message}</Text>
+            </Animated.View>
+          </View>
+        ))}
+      </AnimatedPagerView>
+
+      <View style={styles.introFooter}>
+        <IntroProgressButton
+          activeIndex={activeIndex}
+          isLastStep={isLastStep}
+          totalSteps={steps.length}
+          onPress={handleNextPress}
+        />
+      </View>
+    </LinearGradient>
+  );
+}
+
+function IntroProgressButton({
+  activeIndex,
+  isLastStep,
+  onPress,
+  totalSteps,
+}: {
+  activeIndex: number;
+  isLastStep: boolean;
+  onPress: () => void;
+  totalSteps: number;
+}) {
+  const progress = useSharedValue(activeIndex + 1);
+
+  useEffect(() => {
+    progress.value = withTiming(activeIndex + 1, { duration: 260 });
+  }, [activeIndex, progress]);
+
+  return (
+    <Pressable accessibilityRole="button" style={styles.introProgressButton} onPress={onPress}>
+      <View style={styles.introProgressRing}>
+        {[1, 2, 3, 4].map((segment) => (
+          <IntroProgressSegment
+            key={segment}
+            progress={progress}
+            segment={segment}
+            totalSteps={totalSteps}
+          />
+        ))}
+        <View style={[styles.introNextButton, isLastStep && styles.introNextButtonFinal]}>
+          <Icon source={isLastStep ? 'check' : 'arrow-right'} size={22} color="#ffffff" />
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+function IntroProgressSegment({
+  progress,
+  segment,
+  totalSteps,
+}: {
+  progress: SharedValue<number>;
+  segment: number;
+  totalSteps: number;
+}) {
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      progress.value,
+      [segment - 0.45, segment],
+      [0, segment <= totalSteps ? 1 : 0],
+      Extrapolation.CLAMP
+    ),
+  }));
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.introProgressSegment, getIntroProgressSegmentStyle(segment), animatedStyle]}
+    />
+  );
+}
+
+function getIntroProgressSegmentStyle(segment: number) {
+  switch (segment) {
+    case 1:
+      return styles.introProgressSegment1;
+    case 2:
+      return styles.introProgressSegment2;
+    case 3:
+      return styles.introProgressSegment3;
+    default:
+      return styles.introProgressSegment4;
+  }
+}
+
+function getLeavePlanIntroSteps({
+  entitledDays,
+  leaveYear,
+}: {
+  entitledDays: string;
+  leaveYear: number;
+}): LeavePlanIntroStep[] {
+  const entitlementText = entitledDays !== '0'
+    ? `${entitledDays} days of annual leave`
+    : 'your annual leave entitlement';
+
+  return [
+    {
+      title: { main: 'Plan Your ', accent: 'Leave' },
+      message: 'Choose when you want to take your annual leave so we can plan coverage for the days you will be away.',
+      image: leavePlanStepImages[0],
+    },
+    {
+      title: { main: 'Your Leave ', accent: 'Limit' },
+      message: `You are entitled to ${entitlementText} for ${leaveYear}. Your planned leave periods must stay within this limit.`,
+      image: leavePlanStepImages[1],
+    },
+    {
+      title: { main: 'Split Your ', accent: 'Leave' },
+      message: 'You can split your annual leave into up to 3 separate periods. Add one period at a time and confirm the dates before adding another.',
+      image: leavePlanStepImages[2],
+    },
+    {
+      title: { main: 'Check And ', accent: 'Submit' },
+      message: 'We will check weekends, holidays, unavailable dates, and your remaining days. Submit your plan once the periods look correct. HR approval is required before you can request leave.',
+      image: leavePlanStepImages[3],
+    },
+  ];
 }
 
 function StateCard({ icon, title, description, loading }: { icon: string; title: string; description: string; loading?: boolean }) {
@@ -252,6 +499,124 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.four,
     gap: Spacing.three,
+  },
+  introFlow: {
+    flexGrow: 1,
+    minHeight: 620,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    borderRadius: 24,
+    paddingTop: Spacing.four,
+    paddingBottom: Spacing.two,
+  },
+  introPager: {
+    flex: 1,
+  },
+  introPage: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: Spacing.four,
+  },
+  introImageWrap: {
+    minHeight: 292,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  introImage: {
+    width: '100%',
+    height: 292,
+    resizeMode: 'contain',
+  },
+  introCopy: {
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+  },
+  introTitle: {
+    ...Typography.xl,
+    color: Colors.light.textSecondary,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  introTitleAccent: {
+    color: '#f5a400',
+  },
+  introMessage: {
+    ...Typography.base,
+    color: Colors.light.textSecondary,
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  introFooter: {
+    minHeight: 86,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: Spacing.two,
+  },
+  introProgressButton: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  introProgressRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: Colors.light.border,
+  },
+  introProgressSegment: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    borderColor: 'transparent',
+  },
+  introProgressSegment1: {
+    borderTopColor: '#f5a400',
+  },
+  introProgressSegment2: {
+    borderRightColor: '#f5a400',
+  },
+  introProgressSegment3: {
+    borderBottomColor: '#f5a400',
+  },
+  introProgressSegment4: {
+    borderLeftColor: '#f5a400',
+  },
+  introNextButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.light.primary,
+    shadowColor: Colors.light.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  introNextButtonFinal: {
+    backgroundColor: '#f5a400',
+    shadowColor: '#f5a400',
+  },
+  loadingState: {
+    flexGrow: 1,
+    minHeight: 520,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+  },
+  loadingText: {
+    ...Typography.base,
+    color: Colors.light.textSecondary,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   appBar: {
     minHeight: 64,

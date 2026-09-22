@@ -1,6 +1,6 @@
 import { File, Paths } from 'expo-file-system';
 
-import { apiRequest, GATEWAY_URL } from '@/lib/api/client';
+import { ApiError, apiRequest, GATEWAY_URL } from '@/lib/api/client';
 import { AuthStaff, StaffPrerequisiteCheck, StaffSession } from '@/lib/auth/types';
 
 export type StaffLoginPayload = {
@@ -872,21 +872,7 @@ export async function downloadStaffAttendancePdf({
       ? `/attendance/api/reports/attendance/staff/${encodeURIComponent(staffIdentificationNumber)}/summary/pdf`
       : `/attendance/api/reports/attendance/staff/${encodeURIComponent(staffIdentificationNumber)}/pdf`;
   const filename = `attendance-${type}-${staffIdentificationNumber}-${fromDate}-to-${toDate}.pdf`;
-  const destination = new File(Paths.cache, filename);
-
-  const file = await File.downloadFileAsync(
-    `${GATEWAY_URL}${reportPath}?${params.toString()}`,
-    destination,
-    {
-      idempotent: true,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'x-tenant-id': tenantId,
-      },
-    }
-  );
-
-  return file.uri;
+  return downloadGatewayFile(`${reportPath}?${params.toString()}`, filename, accessToken, tenantId);
 }
 
 export async function downloadRosterPdf({
@@ -899,21 +885,7 @@ export async function downloadRosterPdf({
   tenantId: string;
 }) {
   const filename = `roster-${rosterId}.pdf`;
-  const destination = new File(Paths.cache, filename);
-
-  const file = await File.downloadFileAsync(
-    `${GATEWAY_URL}/attendance/api/rosters/${encodeURIComponent(rosterId)}/pdf`,
-    destination,
-    {
-      idempotent: true,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'x-tenant-id': tenantId,
-      },
-    }
-  );
-
-  return file.uri;
+  return downloadGatewayFile(`/attendance/api/rosters/${encodeURIComponent(rosterId)}/pdf`, filename, accessToken, tenantId);
 }
 
 export function getMyLeaveDashboard({
@@ -1188,21 +1160,36 @@ export async function downloadStaffProfilePdf({
   tenantId: string;
 }) {
   const filename = `staff-profile-${staffIdentificationNumber}.pdf`;
+  return downloadGatewayFile(`/hrm/api/staff/${encodeURIComponent(staffIdentificationNumber)}/profile/pdf`, filename, accessToken, tenantId);
+}
+
+async function downloadGatewayFile(path: string, filename: string, accessToken: string, tenantId: string) {
   const destination = new File(Paths.cache, filename);
 
-  const file = await File.downloadFileAsync(
-    `${GATEWAY_URL}/hrm/api/staff/${encodeURIComponent(staffIdentificationNumber)}/profile/pdf`,
-    destination,
-    {
+  try {
+    const file = await File.downloadFileAsync(`${GATEWAY_URL}${path}`, destination, {
       idempotent: true,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'x-tenant-id': tenantId,
       },
-    }
-  );
+    });
 
-  return file.uri;
+    return file.uri;
+  } catch (error) {
+    const status = getDownloadErrorStatus(error);
+    if (status) {
+      throw new ApiError(status === 401 ? 'Your session has expired.' : 'File download failed', status);
+    }
+
+    throw error;
+  }
+}
+
+function getDownloadErrorStatus(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = message.match(/response has status:?\s*(\d{3})/i);
+  return match ? Number(match[1]) : null;
 }
 
 const onboardingSectionFetchPaths: Record<keyof StaffPrerequisiteCheck, string> = {

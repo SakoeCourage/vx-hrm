@@ -1,5 +1,6 @@
 import type { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -12,13 +13,13 @@ import {
   createLeavePlan,
   getLeaveTypes,
   getMyLeaveDashboard,
-  previewLeaveDates,
   LeaveDashboardResponse,
   LeaveDatePreview,
   LeavePlanEligibilityPeriod,
   LeavePlanEligibilityResponse,
   LeavePlanPayload,
   LeavePreviewDay,
+  previewLeaveDates,
 } from '@/lib/auth/api';
 import { useSession } from '@/lib/auth/session-context';
 import { useAuthenticatedRequest } from '@/lib/auth/use-authenticated-request';
@@ -493,7 +494,7 @@ export default function CreateAnnualLeavePlanScreen() {
           </View>
           <View style={styles.infoText}>
             <Text style={styles.infoTitle}>Annual leave plan</Text>
-            <Text style={styles.infoCaption}>Tell us how you plan to take your annual leave. Once HR approves the plan, we will alert you to submit an official leave request.</Text>
+            <Text style={styles.infoCaption}>Create you annual leave plan. Once HR approves the plan, we will alert you so you can submit an official leave request.</Text>
           </View>
         </View>
       )}
@@ -506,11 +507,10 @@ export default function CreateAnnualLeavePlanScreen() {
           <Text style={styles.emptyPlanTitle}>No planned period yet</Text>
           <Text style={styles.emptyPlanText}>Use the plus button below to add your first plan.</Text>
         </View>
-      ) : (
-        <View style={styles.periodList}>
-          <Text style={styles.sectionTitle}>Planned periods</Text>
-          <View style={styles.periodHeaderDivider} />
-          {periodConfigs.slice(0, visiblePeriods).map((period, index) => {
+	      ) : (
+	        <View style={styles.periodList}>
+	          <Text style={styles.sectionTitle}>Planned periods</Text>
+	          {periodConfigs.slice(0, visiblePeriods).map((period, index) => {
             const startValue = getWatchedPeriodValue(period.startName, {
               firstPeriodStart,
               firstPeriodEnd,
@@ -529,24 +529,61 @@ export default function CreateAnnualLeavePlanScreen() {
             });
             const periodEligibility = eligibility?.periods.find((item) => item.periodNumber === period.number);
 
-            return (
-              <View key={period.number}>
-                <View style={styles.periodRow}>
-                  <View style={styles.periodRowHeader}>
-                    <Text style={styles.periodRowTitle}>Period {period.number}</Text>
-                    <Pressable style={styles.removePeriodButton} onPress={() => deletePeriod(period.number)}>
-                      <Icon source="trash-can-outline" size={18} color={Colors.light.danger} />
-                    </Pressable>
-                  </View>
-                  <View style={styles.periodMetaGrid}>
-                    <PeriodMeta label="Start date" value={startValue ? formatDate(startValue) : '--'} />
-                    <PeriodMeta label="End date" value={endValue ? formatDate(endValue) : '--'} />
-                    <PeriodMeta label="Days" value={periodEligibility ? `${periodEligibility.days}` : '--'} />
-                  </View>
-                </View>
-                {index < visiblePeriods - 1 ? <View style={styles.periodDivider} /> : null}
-              </View>
-            );
+	            return (
+	              <View key={period.number}>
+	                <LinearGradient
+	                  colors={[Colors.light.primary, '#f5a400']}
+	                  start={{ x: 0, y: 0 }}
+	                  end={{ x: 1, y: 1 }}
+	                  style={styles.periodRow}>
+	                  <View style={styles.periodRowHeader}>
+	                    <Text style={styles.periodRowTitle}>Period {period.number}</Text>
+	                    <View style={styles.periodActions}>
+	                      <Pressable style={styles.removePeriodButton} onPress={() => deletePeriod(period.number)}>
+	                        <Icon source="close" size={17} color={Colors.light.danger} />
+	                        <Text style={styles.removePeriodText}>Delete</Text>
+	                      </Pressable>
+	                    </View>
+	                  </View>
+	                  <View style={styles.periodBody}>
+	                    <View style={styles.periodStepper}>
+	                      <View style={styles.periodStepPoint}>
+	                        <View style={styles.periodStepIcon}>
+	                          <Icon source="calendar-start" size={18} color="#ffffff" />
+	                        </View>
+	                        <View style={styles.periodStepText}>
+	                          <Text style={styles.periodStepLabel}>Start date</Text>
+	                          <Text style={styles.periodStepValue}>{startValue ? formatDate(startValue) : '--'}</Text>
+	                        </View>
+	                      </View>
+	                      <View style={styles.periodStepConnector}>
+	                        {[0, 1, 2, 3, 4].map((dot) => (
+	                          <View
+	                            key={dot}
+	                            style={[styles.periodStepDot, { opacity: 0.74 - dot * 0.1 }]}
+	                          />
+	                        ))}
+	                      </View>
+	                      <View style={styles.periodStepPoint}>
+	                        <View style={[styles.periodStepIcon, styles.periodStepEndIcon]}>
+	                          <Icon source="calendar-end" size={18} color="#ffffff" />
+	                        </View>
+	                        <View style={styles.periodStepText}>
+	                          <Text style={styles.periodStepLabel}>End date</Text>
+	                          <Text style={styles.periodStepValue}>{endValue ? formatDate(endValue) : '--'}</Text>
+	                        </View>
+	                      </View>
+	                    </View>
+	                    <View style={styles.periodDaysBlock}>
+	                      <Text style={styles.periodDaysCount}>{periodEligibility ? periodEligibility.days : '--'}</Text>
+	                      <Text style={styles.periodDaysText}>
+	                        {periodEligibility?.days === 1 ? 'day' : 'days'}
+	                      </Text>
+	                    </View>
+	                  </View>
+	                </LinearGradient>
+	              </View>
+	            );
           })}
         </View>
       )}
@@ -587,30 +624,29 @@ export default function CreateAnnualLeavePlanScreen() {
             });
             return (
               <View key={period.number} style={styles.periodBlock}>
-                {pendingEligibility && pendingPlanSignature === currentPlanSignature ? (
-                  <View style={styles.confirmBlock}>
-                    <EligibilityPeriodsConfirmation eligibility={pendingEligibility} />
-                    <View style={styles.confirmActions}>
-                      <AppButton
-                        variant="ghost"
-                        style={styles.confirmActionButton}
-                        disabled={verifyMutation.isPending}
-                        onPress={() => {
-                          setPendingEligibility(null);
-                          setPendingPlanSignature(null);
-                        }}>
-                        Edit dates
-                      </AppButton>
-                      <AppButton
-                        icon="check"
-                        style={styles.confirmActionButton}
-                        disabled={!pendingEligibility.isEligible}
-                        onPress={confirmVerifiedPeriod}>
-                        Confirm period
-                      </AppButton>
-                    </View>
-                  </View>
-                ) : (
+	                {pendingEligibility && pendingPlanSignature === currentPlanSignature ? (
+	                  <View style={styles.confirmBlock}>
+	                    <EligibilityPeriodsConfirmation eligibility={pendingEligibility} />
+	                    <View style={styles.confirmActions}>
+	                      <AppButton
+	                        variant="ghost"
+	                        style={styles.confirmActionButton}
+	                        disabled={verifyMutation.isPending}
+	                        onPress={() => {
+	                          setPendingEligibility(null);
+	                          setPendingPlanSignature(null);
+	                        }}>
+	                        Edit period
+	                      </AppButton>
+	                      <AppButton
+	                        style={styles.confirmActionButton}
+	                        disabled={!pendingEligibility.isEligible}
+	                        onPress={confirmVerifiedPeriod}>
+	                        Confirm period
+	                      </AppButton>
+	                    </View>
+	                  </View>
+	                ) : (
                   <View style={styles.sheetDateForm}>
                     <FormDateField
                       control={control}
@@ -639,7 +675,7 @@ export default function CreateAnnualLeavePlanScreen() {
               loading={verifyMutation.isPending}
               disabled={verifyMutation.isPending || createMutation.isPending || !annualType}
               onPress={handleSubmit(verifyPlan)}>
-              Verify and add period
+              Check available days
             </AppButton>
           ) : null}
         </View>
@@ -676,7 +712,7 @@ function StatusPill({ isEligible }: { isEligible: boolean }) {
   return (
     <View style={[styles.statusPill, { backgroundColor: isEligible ? Colors.light.successMuted : Colors.light.dangerMuted }]}>
       <Text style={[styles.statusText, { color: isEligible ? Colors.light.success : Colors.light.danger }]}>
-        {isEligible ? 'Eligible' : 'Not eligible'}
+        {isEligible ? 'Available' : 'Not available'}
       </Text>
     </View>
   );
@@ -708,8 +744,8 @@ function EligibilityPeriodsConfirmation({ eligibility }: { eligibility: LeavePla
                     key={`${period.periodNumber}-${day.date}-${index}`}
                     style={[styles.confirmDateRow, getPreviewRowTint(day.status)]}>
                     <Text style={styles.confirmDateText}>{formatDate(day.date)}</Text>
-                    <Text style={[styles.confirmStatusText, { color: getPreviewColor(day.status) }]}>
-                      {formatLabel(day.label ?? day.status)}
+	                    <Text style={[styles.confirmStatusText, { color: getPreviewColor(day.status) }]}>
+	                      {formatAvailabilityLabel(day.label ?? day.status)}
                     </Text>
                   </View>
                 ))
@@ -729,15 +765,6 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
     <View style={styles.summaryMetric}>
       <Text style={styles.summaryMetricValue}>{value}</Text>
       <Text style={styles.summaryMetricLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function PeriodMeta({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.periodMeta}>
-      <Text style={styles.periodMetaLabel}>{label}</Text>
-      <Text style={styles.periodMetaValue}>{value}</Text>
     </View>
   );
 }
@@ -1077,6 +1104,13 @@ function formatLabel(value: string) {
   return value.replace(/[_-]+/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function formatAvailabilityLabel(value: string) {
+  const normalized = value.replace(/[_-]+/g, ' ').trim().toLowerCase();
+  if (normalized === 'eligible') return 'Available';
+  if (normalized === 'not eligible') return 'Not available';
+  return formatLabel(value);
+}
+
 const styles = StyleSheet.create({
   screenRoot: {
     flex: 1,
@@ -1184,14 +1218,12 @@ const styles = StyleSheet.create({
   },
   periodList: {
     gap: Spacing.three,
-    borderRadius: 22,
-    backgroundColor: Colors.light.surface,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    padding: Spacing.four,
   },
   periodRow: {
-    gap: Spacing.three,
+    gap: Spacing.four,
+    borderRadius: 18,
+    padding: Spacing.three,
+    overflow: 'hidden',
   },
   periodRowHeader: {
     flexDirection: 'row',
@@ -1201,34 +1233,95 @@ const styles = StyleSheet.create({
   },
   periodRowTitle: {
     ...Typography.sm,
-    color: Colors.light.text,
+    color: '#ffffff',
     fontWeight: '700',
   },
-  periodDivider: {
-    height: 1,
-    backgroundColor: Colors.light.border,
-    marginVertical: Spacing.three,
-  },
-  periodHeaderDivider: {
-    height: 1,
-    backgroundColor: Colors.light.border,
-  },
-  periodMetaGrid: {
+  periodActions: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  periodBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.three,
   },
-  periodMeta: {
+  periodStepper: {
     flex: 1,
     minWidth: 0,
+    gap: 0,
   },
-  periodMetaLabel: {
+  periodStepPoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  periodStepIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  periodStepEndIcon: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    shadowColor: '#000000',
+  },
+  periodStepConnector: {
+    width: 38,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+  },
+  periodStepDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: '#ffffff',
+  },
+  periodStepLabel: {
     ...Typography.xs,
-    color: Colors.light.textSecondary,
+    color: 'rgba(255,255,255,0.78)',
+    fontWeight: '400',
   },
-  periodMetaValue: {
-    ...Typography.sm,
-    color: Colors.light.text,
+  periodStepText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  periodStepValue: {
+    ...Typography.base,
+    color: '#ffffff',
     fontWeight: '700',
+  },
+  periodDaysBlock: {
+    width: 82,
+    minHeight: 92,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  periodDaysCount: {
+    fontSize: 38,
+    lineHeight: 42,
+    color: '#ffffff',
+    fontWeight: '800',
+  },
+  periodDaysText: {
+    ...Typography.xs,
+    color: 'rgba(255,255,255,0.82)',
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   periodBlock: {
     gap: Spacing.three,
@@ -1315,12 +1408,16 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   removePeriodButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.dangerMuted,
+    gap: 3,
+    paddingVertical: 4,
+  },
+  removePeriodText: {
+    ...Typography.xs,
+    color: Colors.light.danger,
+    fontWeight: '700',
   },
   separator: {
     height: 1,

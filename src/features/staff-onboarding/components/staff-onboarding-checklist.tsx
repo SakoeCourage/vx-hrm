@@ -26,18 +26,19 @@ export function StaffOnboardingChecklist({ checklist }: StaffOnboardingChecklist
   const completedCount = completedItems.length;
   const totalCount = staffPrerequisiteItems.length;
   const progress = totalCount > 0 ? completedCount / totalCount : 0;
+  const isComplete = pendingItems.length === 0;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Complete onboarding</Text>
+        <Text style={styles.title}>{isComplete ? 'Staff records' : 'Complete onboarding'}</Text>
         <View style={styles.headerAction}>
           <Icon source="chevron-right" size={16} color={Colors.light.text} />
         </View>
       </View>
       <View style={styles.metaRow}>
         <Text style={styles.meta}>
-          Step {completedCount} of {totalCount} Completed
+          {isComplete ? 'All sections completed' : `Step ${completedCount} of ${totalCount} Completed`}
         </Text>
         <Text style={styles.meta}>{Math.round(progress * 100)}% Completed</Text>
       </View>
@@ -50,7 +51,7 @@ export function StaffOnboardingChecklist({ checklist }: StaffOnboardingChecklist
         )}
         {pendingItems.length > 0 && completedItems.length > 0 && <View style={styles.divider} />}
         {completedItems.length > 0 && (
-          <OnboardingSection label="Completed" items={completedItems} checklist={checklist} />
+          <OnboardingSection label={isComplete ? 'Records' : 'Completed'} items={completedItems} checklist={checklist} />
         )}
       </View>
     </View>

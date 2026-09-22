@@ -324,7 +324,6 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
   const attendanceStatus = attendanceStatusQuery.data;
   const todayRosterCell = findRosterCellForDate(currentRosterQuery.data ?? [], todayParam);
   const todayCalendarDay = rosterCalendarQuery.data?.days.find((day) => day.date === todayParam);
-  const hasMissingPrerequisites = Object.values(staff.newStaffPrerequisiteCheck ?? {}).some((value) => !value);
   const lastCheckIn = attendanceStatus?.todaysPunches?.filter((p) => p.status === 'CHECKIN').at(-1);
   const lastCheckOut = attendanceStatus?.todaysPunches?.filter((p) => p.status === 'CHECKOUT').at(-1);
   const clockInTime = attendanceStatus?.checkedInAt
@@ -867,7 +866,7 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
           />
         </HomeInfoCard>
 
-        <HomeInfoCard title="Leave details" onPress={() => router.push('/leave/annual')}>
+        <HomeInfoCard title="Annual leave" onPress={() => router.push('/leave/annual')}>
           <LeaveDetails
             dashboard={leaveDashboardQuery.data}
             isLoading={leaveDashboardQuery.isLoading}
@@ -876,11 +875,9 @@ export function HomeShell({ staff, onSignOut }: HomeShellProps) {
         </HomeInfoCard>
       </View>
 
-      {hasMissingPrerequisites && (
-        <View style={styles.onboardingCard}>
-          <StaffOnboardingChecklist checklist={staff.newStaffPrerequisiteCheck} />
-        </View>
-      )}
+      <View style={styles.onboardingCard}>
+        <StaffOnboardingChecklist checklist={staff.newStaffPrerequisiteCheck} />
+      </View>
 
       <AppSnackbar
         visible={attendanceToast.visible}

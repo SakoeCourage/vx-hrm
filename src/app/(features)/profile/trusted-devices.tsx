@@ -14,6 +14,7 @@ import {
   MobileAttendanceTrustedDevice,
 } from '@/lib/auth/api';
 import { useSession } from '@/lib/auth/session-context';
+import { useAuthenticatedRequest } from '@/lib/auth/use-authenticated-request';
 import {
   getMobileAttendanceDeviceMetadata,
   removeCurrentTrustedMobileAttendanceDevice,
@@ -29,6 +30,7 @@ type ToastState = {
 
 export default function TrustedDevicesScreen() {
   const { session } = useSession();
+  const authenticatedRequest = useAuthenticatedRequest();
   const queryClient = useQueryClient();
   const deviceKeyId = useAttendanceDeviceKeyId();
   const editSheetRef = useRef<BottomSheetModal>(null);
@@ -40,7 +42,6 @@ export default function TrustedDevicesScreen() {
   });
 
   const staffId = session?.staffIdentificationNumber ?? '';
-  const accessToken = session?.accessToken ?? '';
   const tenantId = session?.tenantId ?? '';
   const staffName = [session?.firstName, session?.lastName].filter(Boolean).join(' ') || staffId;
   const deviceName = getMobileAttendanceDeviceMetadata().deviceName ?? 'This phone';
@@ -50,13 +51,15 @@ export default function TrustedDevicesScreen() {
   const deviceSummaryQuery = useQuery({
     queryKey: deviceSummaryKey,
     queryFn: () =>
-      getMobileAttendanceTrustedDeviceSummary({
-        accessToken,
-        tenantId,
-        staffIdentificationNumber: staffId,
-        deviceKeyId: deviceKeyId ?? '',
-      }),
-    enabled: Boolean(accessToken && tenantId && staffId && deviceKeyId),
+      authenticatedRequest((activeSession) =>
+        getMobileAttendanceTrustedDeviceSummary({
+          accessToken: activeSession.accessToken,
+          tenantId: activeSession.tenantId,
+          staffIdentificationNumber: activeSession.staffIdentificationNumber,
+          deviceKeyId: deviceKeyId ?? '',
+        })
+      ),
+    enabled: Boolean(session?.accessToken && tenantId && staffId && deviceKeyId),
   });
   const trustStatus = deviceSummaryQuery.data?.status;
   const isTrusted = trustStatus === 'SAME_DEVICE';
@@ -67,11 +70,13 @@ export default function TrustedDevicesScreen() {
         throw new Error('Sign in again to manage trusted devices.');
       }
 
-      return trustCurrentMobileAttendanceDevice({
-        session,
-        deviceKeyId: deviceKeyId ?? '',
-        purpose,
-      });
+      return authenticatedRequest((activeSession) =>
+        trustCurrentMobileAttendanceDevice({
+          session: activeSession,
+          deviceKeyId: deviceKeyId ?? '',
+          purpose,
+        })
+      );
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['mobile-attendance-device'] });
@@ -102,11 +107,13 @@ export default function TrustedDevicesScreen() {
         throw new Error('This phone is still preparing attendance verification. Please try again.');
       }
 
-      return removeCurrentTrustedMobileAttendanceDevice({
-        session,
-        deviceKeyId,
-        reason: 'User removed this phone',
-      });
+      return authenticatedRequest((activeSession) =>
+        removeCurrentTrustedMobileAttendanceDevice({
+          session: activeSession,
+          deviceKeyId,
+          reason: 'User removed this phone',
+        })
+      );
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['mobile-attendance-device'] });
